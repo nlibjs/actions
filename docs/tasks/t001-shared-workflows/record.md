@@ -103,3 +103,7 @@ PR #1 merged with a merge commit on 2026-10-12, preserving the R2 helper pin. Th
 ## Source-ref review follow-up
 
 The [pilot review](https://github.com/nlibjs/actions/pull/7#pullrequestreview-5489994474) accepted the release evidence and recommended automatic source retention before expansion. The [follow-up implementation](../t006-source-ref-retention/verification.md) retains the caller SHA before build, rejects conflicts and uses conditional deletion after verifying the published tag. A separate implementation PR and caller pin review precede further adoption.
+
+## Release-triggered lifecycle revision
+
+The current [design](design.md) and [plan](plan.md) replace the next implementation target with GitHub Release publication as the deployment trigger. npm staging and JSR publishing run independently from the same tag; npm approval requires no manual Finalize. Existing implementation and pilot evidence above describe the previously deployed lifecycle. Further adoption waits for the revised shared implementation and changelog migration.
