@@ -1,6 +1,6 @@
 # Shared workflow task record
 
-Current status (2026-10-12): Shared PRs #1 and #3 are merged. R3 pilot adoption is prepared as [changelog PR #554](https://github.com/nlibjs/changelog/pull/554). Technical review, external settings confirmation, adoption merge, and the first normal pilot release are next. The earlier R2 status sections below are historical.
+Current status (2026-10-12): Shared PRs #1 and #3 are merged. R3 adoption PR #554 and plan PR #4 are merged. The first main verify run failed at workflow startup; shared permission inheritance and the caller pin need correction before verify can pass and the normal pilot can proceed. The earlier R2 status sections below are historical.
 
 ## Request and agreement
 
@@ -84,3 +84,11 @@ PR #1 merged with a merge commit on 2026-10-12, preserving the R2 helper pin. Th
 - Compared all 39 members before/after cleanup. Only package.json changed by removing devDependencies and renovate; the other 38 files were byte-identical. Installed the cleaned tarball into a temporary consumer and confirmed CLI help and v0.4.0 changelog generation. The existing absent main entry is recorded for separate review.
 - actionlint 1.7.12 and caller/shared contracts passed. [Detailed R3 evidence](../t003-changelog-adoption/verification.md) includes package metrics and the remaining checks.
 - Read-only npm metadata confirms 0.4.0 is public; its local version tag exists. Trusted Publisher and caller Actions settings remain for the user to confirm. No caller adoption merge, real stage/finalize, GitHub draft mutation, npm approval, or rollout to other callers occurred.
+
+## First adopted verify and startup correction
+
+- Changelog PR #554 merged as `0fc86dffba69fe6c2dd45d8d91e491fd4de2148c`; actions PR #4 merged as `42cfe2806321bbb95500a077de62ddecc28e8ddc`.
+- [Verify run 38209633075](https://github.com/nlibjs/changelog/actions/runs/38209633075) failed before any job started. GitHub rejected nested Stage/ProtectedStage requests for contents write and id-token write against the Verify caller's contents-read-only ceiling. Local helper tests and actionlint did not detect this cross-workflow permission conflict.
+- Keep the caller's narrow operation permissions. Remove fixed write requests from shared publishing jobs and the shared workflow default; those jobs inherit the caller ceiling. Keep ValidateInputs and Verify explicitly read-only. The helper SHA, input/output interface, operation guards, and release/recovery behavior are unchanged.
+- Add cross-workflow checks for every example and additional caller paths, including skipped nested jobs. Add regression tests for read-only verify, contents-write-only finalize, and workflow-level permission requests. Validation CI also contains disabled local reusable calls with narrow Verify/Finalize ceilings for GitHub's own startup validation.
+- Prepare a separate caller pin update. Merge the shared workflow fix first, then its caller pin update, and rerun main verify before staging a normal version. This failed run did not publish or mutate a draft.

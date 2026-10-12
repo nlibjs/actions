@@ -3,6 +3,23 @@ on: [push, pull_request]
 permissions:
   contents: read
 jobs:
+  # These reusable calls are parsed by GitHub but never run on the configured
+  # push/pull_request events. Contract checks keep workflow_dispatch disabled.
+  VerifyPermissionContract:
+    if: github.event_name == 'workflow_dispatch'
+    permissions:
+      contents: read
+    uses: ./.github/workflows/npm-release.yml
+    with:
+      action: verify
+  FinalizePermissionContract:
+    if: github.event_name == 'workflow_dispatch'
+    permissions:
+      contents: write
+    uses: ./.github/workflows/npm-release.yml
+    with:
+      action: finalize
+      version: '1.2.3'
   Validate:
     runs-on: ubuntu-latest
     timeout-minutes: 15

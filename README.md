@@ -81,9 +81,9 @@ Do not treat a Release operation returning 403/404 as proof of absence. GitHub m
 
 ## Authentication and permissions
 
-Register the **caller repository's owner/repository, release.yml, and environment** as the npm Trusted Publisher. Do not register this shared repository as the publishing source. Both caller and callee need id-token: write for staging.
+Register the **caller repository's owner/repository, release.yml, and environment** as the npm Trusted Publisher. Do not register this shared repository as the publishing source. The Stage caller grants id-token: write, which the selected shared stage job inherits.
 
-verify uses contents: read. stage uses contents: write and id-token: write in one job. finalize uses contents: write. Each environment-protected operation uses one job, so adding required reviewers results in one approval per stage or finalize operation. An empty environment selects jobs without an environment.
+Set permissions on each caller job explicitly: verify uses contents: read; stage uses contents: write and id-token: write; finalize uses contents: write. The shared ValidateInputs and Verify jobs explicitly reduce permissions to contents: read. Publishing jobs inherit the caller job's permissions, so they request no higher permission ceiling during workflow validation. GitHub checks skipped jobs too: declaring fixed write permissions on a stage/finalize job would reject a read-only verify caller before any job starts. Each environment-protected operation uses one job, so adding required reviewers results in one approval per stage or finalize operation. An empty environment selects jobs without an environment.
 
 No npm token or secrets: inherit is required. Keep secrets in the caller and pass individual secrets explicitly when another purpose requires them. Runners and GITHUB_TOKEN belong to the caller. Caller source code and secrets are not stored in this public shared repository.
 

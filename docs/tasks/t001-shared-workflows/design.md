@@ -176,7 +176,7 @@ Evaluate richer records, automatic unknown-outcome recovery, and scheduled final
 | Finalize | contents: write | Verify public npm and publish GitHub Release/tag |
 | Caller PublishJsr | contents: read, id-token: write | JSR publishing |
 
-The caller grants the permission ceiling; callee jobs use only the permissions they need. finalize does not need id-token and verify receives no write permission. [GitHub reuse permissions](https://docs.github.com/en/actions/reference/workflows-and-actions/reusing-workflow-configurations)
+Each caller job explicitly grants the operation's minimum permission ceiling. Shared publishing jobs inherit that ceiling; ValidateInputs and Verify explicitly reduce it to contents: read. Do not declare fixed write requests in shared publishing jobs: GitHub checks every nested job, including skipped ones, and rejects those requests for a read-only Verify caller. finalize does not need id-token and verify receives no write permission. [GitHub reuse permissions](https://docs.github.com/en/actions/reference/workflows-and-actions/reusing-workflow-configurations)
 
 An empty environment selects a job without that property; otherwise select a protected job. Do not represent absence by creating an empty-name environment. Thin alternative jobs invoke the same helper. One Stage job handles all publishing steps, keeping protected approvals to one for stage and one for finalize. Independent verify needs no deployment approval.
 
@@ -184,7 +184,7 @@ On 2026-10-12, deployment in lint-commit and cleanup-package-json had empty prot
 
 Public shared workflows can serve personal callers when their Actions settings allow them. Keep secrets in callers and pass them explicitly if needed. Add no npm token for public npm/OIDC. Private dependency authentication needs a separate design. [GitHub access rules](https://docs.github.com/en/actions/reference/workflows-and-actions/reusing-workflow-configurations)
 
-Register the caller owner/repository/release.yml/environment with npm, not this shared repository. Grant id-token: write to both workflows for stage, use GitHub-hosted runners, and retain disabled publishing dependency caches. [npm OIDC setup](https://docs.npmjs.com/trusted-publishers/)
+Register the caller owner/repository/release.yml/environment with npm, not this shared repository. Grant id-token: write to the Stage caller and let the selected shared stage job inherit it, use GitHub-hosted runners, and retain disabled publishing dependency caches. [npm OIDC setup](https://docs.npmjs.com/trusted-publishers/)
 
 Caller concurrency group release serializes stage/finalize/JSR, with cancel-in-progress=false. Do not add the same group to the callee. Default concurrency does not preserve every pending run in FIFO order; inspect unstaged versions and run stage manually if needed. [GitHub workflow syntax](https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax)
 

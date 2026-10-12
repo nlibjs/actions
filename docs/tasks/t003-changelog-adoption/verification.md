@@ -59,3 +59,9 @@ The adoption PR is a draft awaiting technical review and the user's merge decisi
 The user must confirm npm Trusted Publisher values for `@nlib/changelog`: owner `nlibjs`, repository `changelog`, workflow `release.yml`, environment empty. Confirm caller Actions settings permit the shared workflow. No external settings have been changed or independently verified.
 
 Read-only npm metadata on 2026-10-12 confirms 0.4.0 is public, and its Git version tag exists. The next normal version is the pilot target. After adoption review/merge, validate real OIDC/provenance, saved draft assets and fixed SHA, maintainer npm approval, public integrity, GitHub finalization, and the final tag SHA. The user starts the first finalize. Keep remaining callers behind the R4 pilot-results review and approval checkpoint.
+
+## Post-merge verify startup failure
+
+Adoption PR #554 and plan PR #4 are merged. [Main verify run 38209633075](https://github.com/nlibjs/changelog/actions/runs/38209633075) concluded `startup_failure` with no jobs. GitHub's annotation reports that skipped Stage and ProtectedStage jobs requested contents write and id-token write above the Verify caller's contents-read-only ceiling. The original local checks covered helper execution and each workflow in isolation, but did not validate this nested permission combination.
+
+Correct the shared workflow to inherit caller permissions for publishing jobs, retain explicit read-only ValidateInputs/Verify, and update the caller's fixed workflow SHA. Include whole-graph caller permission regression checks and disabled narrow reusable calls in validation CI. Main verify must pass after both reviewed changes are merged; real OIDC/provenance remains for the normal pilot release.

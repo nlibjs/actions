@@ -31,8 +31,8 @@ on:
         value: ${{ jobs.Verify.outputs.jsr-ready || jobs.Stage.outputs.jsr-ready || jobs.ProtectedStage.outputs.jsr-ready || jobs.Finalize.outputs.jsr-ready || jobs.ProtectedFinalize.outputs.jsr-ready }}
       release-url:
         value: ${{ jobs.Verify.outputs.release-url || jobs.Stage.outputs.release-url || jobs.ProtectedStage.outputs.release-url || jobs.Finalize.outputs.release-url || jobs.ProtectedFinalize.outputs.release-url }}
-permissions:
-  contents: read
+# Publishing jobs inherit each caller job's permission ceiling.
+# Fixed write requests on skipped jobs would reject read-only Verify callers.
 jobs:
   ValidateInputs:
     runs-on: ubuntu-latest
@@ -98,9 +98,6 @@ jobs:
     if: inputs.action == 'stage' && inputs.environment == ''
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    permissions:
-      contents: write
-      id-token: write
     outputs:
       package-name: ${{ steps.release.outputs.package-name }}
       version: ${{ steps.release.outputs.version }}
@@ -136,9 +133,6 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     environment: ${{ inputs.environment }}
-    permissions:
-      contents: write
-      id-token: write
     outputs:
       package-name: ${{ steps.release.outputs.package-name }}
       version: ${{ steps.release.outputs.version }}
@@ -173,8 +167,6 @@ jobs:
     if: inputs.action == 'finalize' && inputs.environment == ''
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    permissions:
-      contents: write
     outputs:
       package-name: ${{ steps.release.outputs.package-name }}
       version: ${{ steps.release.outputs.version }}
@@ -205,8 +197,6 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     environment: ${{ inputs.environment }}
-    permissions:
-      contents: write
     outputs:
       package-name: ${{ steps.release.outputs.package-name }}
       version: ${{ steps.release.outputs.version }}
