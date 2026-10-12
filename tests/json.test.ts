@@ -63,22 +63,23 @@ test('metadata decoding preserves consumer fields and extra publish settings', (
   assert.equal(JSON.stringify(decoded.publishConfig), JSON.stringify(fields.publishConfig));
 });
 
-test('untrusted Release and asset fields must have the expected shapes', () => {
-  for (const value of [
+test('untrusted Release publication flags and identity are checked', () => {
+  const value = {
+    id: 1,
+    tag_name: 'v1.2.3',
+    draft: false,
+    prerelease: false,
+    html_url: release.html_url,
+  };
+  for (const malformed of [
     null,
     [],
-    { ...release, id: '1' },
-    { ...release, draft: 'false' },
-    { ...release, target_commitish: 1 },
-    { ...release, html_url: null },
-    { ...release, assets: {} },
-    { ...release, assets: [{ id: 10, name: 'package.tgz' }] },
-    { ...release, body: [] },
-    { ...release, upload_url: 1 },
-  ]) {
-    assert.throws(() => githubRelease(value), /Invalid/);
-  }
-  assert.equal(githubRelease({ ...release, body: null }).body, null);
+    { ...value, id: '1' },
+    { ...value, draft: 'false' },
+    { ...value, prerelease: null },
+    { ...value, html_url: null },
+  ])
+    assert.throws(() => githubRelease(malformed), /Invalid/);
 });
 
 test('stage IDs remain optional diagnostics for unfamiliar and malformed JSON', () => {
@@ -96,19 +97,15 @@ test('stage IDs remain optional diagnostics for unfamiliar and malformed JSON', 
     assert.equal(optionalStageId(text), '');
 });
 
-test('GitHub list, create and publish responses are validated at the adapter boundary', async () => {
+test('GitHub Release responses are validated without any mutations', async () => {
   const io = await createRuntime({
     repository,
-    fetcher: async () => Response.json({ ...release, draft: 'false' }),
+    fetcher: async (_url, init) => {
+      assert.ok(!init?.method || init.method === 'GET');
+      return Response.json({ ...release, draft: 'false' });
+    },
   });
-  await assert.rejects(io.releases(), /Unexpected release list/);
-  await assert.rejects(io.createDraft('v1.2.3', release.target_commitish, 'notes'), /draft flag/);
-  await assert.rejects(io.publishDraft(release), /draft flag/);
-  const list = await createRuntime({
-    repository,
-    fetcher: async () => Response.json([{ ...release, assets: null }]),
-  });
-  await assert.rejects(list.releases(), /assets/);
+  await assert.rejects(io.release('v1.2.3'), /publication flags/);
 });
 
 test('GitHub tag responses reject malformed objects and distinguish explicit absence', async () => {
@@ -127,7 +124,7 @@ test('GitHub tag responses reject malformed objects and distinguish explicit abs
     fetcher: async () => new Response('', { status: 404 }),
   });
   assert.equal(await absent.tagSha('v1.2.3'), null);
-  await assert.rejects(absent.releases(), /not treated as absence/);
+  await assert.rejects(absent.release('v1.2.3'), /not treated as absence/);
 });
 
 test('npm JSON and pack filenames are checked before use', async (t) => {
@@ -177,4 +174,49 @@ test('the TypeScript CLI runs directly on Node 26 and rejects invalid inputs bef
   assert.equal(result.code, 1);
   assert.match(result.stderr, /Invalid action/);
   assert.equal(await readFile(outputs, 'utf8'), '');
+});
+
+test('annotated tags resolve to commits and permission errors remain errors', async () => {
+  const sha = 'b'.repeat(40);
+  const io = await createRuntime({
+    repository,
+    fetcher: async (url) =>
+      Response.json({
+        object: { type: String(url).includes('/git/ref/') ? 'tag' : 'commit', sha },
+      }),
+  });
+  assert.equal(await io.tagSha('v1.2.3'), sha);
+  for (const status of [403, 500]) {
+    const failed = await createRuntime({
+      repository,
+      fetcher: async () => new Response('', { status }),
+    });
+    await assert.rejects(failed.tagSha('v1.2.3'), /not treated as absence/);
+  }
+});
+
+test('real cleanup and tarball inspection preserve consumer metadata', async (t) => {
+  const cwd = await mkdtemp(join(tmpdir(), 'cleanup-fixture-'));
+  t.after(() => rm(cwd, { recursive: true, force: true }));
+  const manifest = {
+    ...pkg,
+    exports: { '.': './index.js' },
+    bin: { widget: './index.js' },
+    sideEffects: false,
+    dependencies: { dep: '1.0.0' },
+    devDependencies: { dev: '1.0.0' },
+    renovate: {},
+    files: ['index.js'],
+  };
+  await writeFile(join(cwd, 'package.json'), JSON.stringify(manifest));
+  await writeFile(join(cwd, 'index.js'), '#!/usr/bin/env node\nconsole.log(1);');
+  const io = await createRuntime({ repository, actionPath: resolve('actions/npm-release') });
+  await io.cleanup(cwd, 'registry');
+  const packed = await io.pack(cwd);
+  for (const key of ['name', 'version', 'exports', 'bin', 'sideEffects', 'dependencies'] as const)
+    assert.deepEqual(packed.pkg[key], manifest[key]);
+  assert.equal(packed.pkg.devDependencies, undefined);
+  assert.equal(packed.pkg.renovate, undefined);
+  assert.ok(packed.files.includes('package/index.js'));
+  assert.equal((await io.inspectTarball(packed.tarball)).integrity, packed.integrity);
 });

@@ -1,53 +1,107 @@
 name: Shared npm release
-description: Verify, stage or finalize a public npm package
+description: Verify or stage a package from a published Release
 inputs:
   action:
-    description: verify, stage or finalize
+    description: verify or stage
     default: verify
-  version:
-    description: Stable version to finalize
-    default: ''
+  tag:
+    description: Published stable Release tag for stage
+    default: ""
   cleanup-source:
     description: registry or local
     default: registry
+  resolve-only:
+    description: Resolve the Release source without preparing or publishing
+    default: "false"
+  source-sha:
+    description: Expected resolved source for parallel registry jobs
+    default: ""
 outputs:
   package-name:
     description: Release package-name
-    value: ${{ steps.release.outputs.package-name }}
+    value: ${{ steps.prepare.outputs.package-name }}
   version:
     description: Release version
-    value: ${{ steps.release.outputs.version }}
+    value: ${{ steps.prepare.outputs.version }}
   tag:
     description: Release tag
-    value: ${{ steps.release.outputs.tag }}
+    value: ${{ steps.prepare.outputs.tag }}
   source-sha:
     description: Release source-sha
-    value: ${{ steps.release.outputs.source-sha }}
+    value: ${{ steps.source.outputs.source-sha }}
   npm-state:
     description: Release npm-state
-    value: ${{ steps.release.outputs.npm-state }}
-  github-state:
-    description: Release github-state
-    value: ${{ steps.release.outputs.github-state }}
-  jsr-ready:
-    description: Release jsr-ready
-    value: ${{ steps.release.outputs.jsr-ready }}
+    value: ${{ steps.submit.outputs.npm-state || steps.prepare.outputs.npm-state }}
   release-url:
     description: Release release-url
-    value: ${{ steps.release.outputs.release-url }}
+    value: ${{ steps.prepare.outputs.release-url }}
 runs:
   using: composite
   steps:
-    - name: Install locked cleanup tooling
+    - id: source
       shell: bash
-      env:
-        COMMON_ACTION_PATH: ${{ github.action_path }}
-      run: npm ci --prefix "$COMMON_ACTION_PATH" --ignore-scripts --no-audit --no-fund
-    - id: release
-      shell: bash
+      run: node "$COMMON_ACTION_PATH/src/cli.ts"
       env:
         COMMON_ACTION_PATH: ${{ github.action_path }}
         RELEASE_ACTION: ${{ inputs.action }}
-        RELEASE_VERSION: ${{ inputs.version }}
+        RELEASE_TAG: ${{ inputs.tag }}
         RELEASE_CLEANUP_SOURCE: ${{ inputs.cleanup-source }}
+        RELEASE_PHASE: resolve
+    - name: Check parallel source
+      if: inputs.source-sha != ''
+      shell: bash
+      env:
+        EXPECTED_SHA: ${{ inputs.source-sha }}
+        RESOLVED_SHA: ${{ steps.source.outputs.source-sha }}
+      run: test "$EXPECTED_SHA" = "$RESOLVED_SHA"
+    - name: Install locked cleanup tooling
+      if: inputs.resolve-only != 'true'
+      shell: bash
+      run: npm ci --prefix "$COMMON_ACTION_PATH" --ignore-scripts --no-audit --no-fund
+      env:
+        COMMON_ACTION_PATH: ${{ github.action_path }}
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      if: inputs.resolve-only != 'true'
+      with:
+        ref: ${{ steps.source.outputs.source-sha }}
+        fetch-depth: 0
+        persist-credentials: false
+    - id: prepare
+      if: inputs.resolve-only != 'true'
+      shell: bash
       run: node "$COMMON_ACTION_PATH/src/cli.ts"
+      env:
+        COMMON_ACTION_PATH: ${{ github.action_path }}
+        RELEASE_ACTION: ${{ inputs.action }}
+        RELEASE_TAG: ${{ inputs.tag }}
+        RELEASE_CLEANUP_SOURCE: ${{ inputs.cleanup-source }}
+        RELEASE_PHASE: prepare
+        RELEASE_SOURCE_SHA: ${{ steps.source.outputs.source-sha }}
+    - id: evidence
+      if: steps.prepare.outputs.submit == 'true'
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+      with:
+        name: npm-${{ inputs.tag }}-${{ github.run_id }}-${{ github.run_attempt }}-prepared
+        path: ${{ runner.temp }}/npm-evidence/evidence.json
+        if-no-files-found: error
+        retention-days: 0
+    - id: submit
+      if: steps.prepare.outputs.submit == 'true'
+      shell: bash
+      run: node "$COMMON_ACTION_PATH/src/cli.ts"
+      env:
+        COMMON_ACTION_PATH: ${{ github.action_path }}
+        RELEASE_ACTION: ${{ inputs.action }}
+        RELEASE_TAG: ${{ inputs.tag }}
+        RELEASE_CLEANUP_SOURCE: ${{ inputs.cleanup-source }}
+        RELEASE_PHASE: submit
+        RELEASE_SOURCE_SHA: ${{ steps.source.outputs.source-sha }}
+        RELEASE_TARBALL: ${{ steps.prepare.outputs.tarball }}
+    - id: receipt
+      if: always() && steps.submit.outcome != 'skipped'
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+      with:
+        name: npm-${{ inputs.tag }}-${{ github.run_id }}-${{ github.run_attempt }}-result
+        path: ${{ runner.temp }}/npm-evidence/evidence.json
+        if-no-files-found: error
+        retention-days: 0

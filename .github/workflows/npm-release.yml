@@ -4,62 +4,36 @@ on:
     inputs:
       action:
         type: string
-        default: verify
-      version:
+        default: "verify"
+      tag:
         type: string
-        default: ''
+        default: ""
       environment:
         type: string
-        default: ''
+        default: ""
       cleanup-source:
         type: string
-        default: registry
+        default: "registry"
+      source-sha:
+        type: string
+        default: ""
     outputs:
       package-name:
-        value: ${{ jobs.Verify.outputs.package-name || jobs.Stage.outputs.package-name || jobs.ProtectedStage.outputs.package-name || jobs.Finalize.outputs.package-name || jobs.ProtectedFinalize.outputs.package-name }}
+        value: ${{ jobs.Verify.outputs.package-name || jobs.Stage.outputs.package-name || jobs.ProtectedStage.outputs.package-name }}
       version:
-        value: ${{ jobs.Verify.outputs.version || jobs.Stage.outputs.version || jobs.ProtectedStage.outputs.version || jobs.Finalize.outputs.version || jobs.ProtectedFinalize.outputs.version }}
+        value: ${{ jobs.Verify.outputs.version || jobs.Stage.outputs.version || jobs.ProtectedStage.outputs.version }}
       tag:
-        value: ${{ jobs.Verify.outputs.tag || jobs.Stage.outputs.tag || jobs.ProtectedStage.outputs.tag || jobs.Finalize.outputs.tag || jobs.ProtectedFinalize.outputs.tag }}
+        value: ${{ jobs.Verify.outputs.tag || jobs.Stage.outputs.tag || jobs.ProtectedStage.outputs.tag }}
       source-sha:
-        value: ${{ jobs.Verify.outputs.source-sha || jobs.Stage.outputs.source-sha || jobs.ProtectedStage.outputs.source-sha || jobs.Finalize.outputs.source-sha || jobs.ProtectedFinalize.outputs.source-sha }}
+        value: ${{ jobs.Verify.outputs.source-sha || jobs.Stage.outputs.source-sha || jobs.ProtectedStage.outputs.source-sha }}
       npm-state:
-        value: ${{ jobs.Verify.outputs.npm-state || jobs.Stage.outputs.npm-state || jobs.ProtectedStage.outputs.npm-state || jobs.Finalize.outputs.npm-state || jobs.ProtectedFinalize.outputs.npm-state }}
-      github-state:
-        value: ${{ jobs.Verify.outputs.github-state || jobs.Stage.outputs.github-state || jobs.ProtectedStage.outputs.github-state || jobs.Finalize.outputs.github-state || jobs.ProtectedFinalize.outputs.github-state }}
-      jsr-ready:
-        value: ${{ jobs.Verify.outputs.jsr-ready || jobs.Stage.outputs.jsr-ready || jobs.ProtectedStage.outputs.jsr-ready || jobs.Finalize.outputs.jsr-ready || jobs.ProtectedFinalize.outputs.jsr-ready }}
+        value: ${{ jobs.Verify.outputs.npm-state || jobs.Stage.outputs.npm-state || jobs.ProtectedStage.outputs.npm-state }}
       release-url:
-        value: ${{ jobs.Verify.outputs.release-url || jobs.Stage.outputs.release-url || jobs.ProtectedStage.outputs.release-url || jobs.Finalize.outputs.release-url || jobs.ProtectedFinalize.outputs.release-url }}
-# Publishing jobs inherit each caller job's permission ceiling.
-# Fixed write requests on skipped jobs would reject read-only Verify callers.
+        value: ${{ jobs.Verify.outputs.release-url || jobs.Stage.outputs.release-url || jobs.ProtectedStage.outputs.release-url }}
+# Publishing jobs inherit caller permissions, including on skipped branches.
 jobs:
-  ValidateInputs:
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    permissions:
-      contents: read
-    steps:
-      - shell: bash
-        env:
-          RELEASE_ACTION: ${{ inputs.action }}
-          RELEASE_VERSION: ${{ inputs.version }}
-          RELEASE_CLEANUP: ${{ inputs.cleanup-source }}
-        run: |
-          case "$RELEASE_ACTION" in verify|stage|finalize) ;; *) echo 'Invalid action'; exit 1 ;; esac
-          case "$RELEASE_CLEANUP" in registry|local) ;; *) echo 'Invalid cleanup-source'; exit 1 ;; esac
-          if [[ "$RELEASE_ACTION" == finalize ]]; then
-            [[ "$RELEASE_VERSION" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]] || exit 1
-          else
-            [[ -z "$RELEASE_VERSION" ]] || exit 1
-          fi
-          if [[ "$RELEASE_ACTION" != verify ]]; then
-            [[ "$GITHUB_REF" == refs/heads/main ]] || exit 1
-            [[ "$GITHUB_EVENT_NAME" == push || "$GITHUB_EVENT_NAME" == workflow_dispatch ]] || exit 1
-          fi
   Verify:
-    needs: ValidateInputs
-    if: inputs.action == 'verify'
+    if: inputs.action != 'stage'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
@@ -70,15 +44,8 @@ jobs:
       tag: ${{ steps.release.outputs.tag }}
       source-sha: ${{ steps.release.outputs.source-sha }}
       npm-state: ${{ steps.release.outputs.npm-state }}
-      github-state: ${{ steps.release.outputs.github-state }}
-      jsr-ready: ${{ steps.release.outputs.jsr-ready }}
       release-url: ${{ steps.release.outputs.release-url }}
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-        with:
-          ref: ${{ github.sha }}
-          fetch-depth: 0
-          persist-credentials: false
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
           node-version: 26.x
@@ -89,12 +56,12 @@ jobs:
         uses: nlibjs/actions/actions/npm-release@70dd80ae972e812efcc9606d0ec5d514c8be3982
         with:
           action: ${{ inputs.action }}
-          version: ${{ inputs.version }}
+          tag: ${{ inputs.tag }}
           cleanup-source: ${{ inputs.cleanup-source }}
+          source-sha: ${{ inputs.source-sha }}
         env:
           GH_TOKEN: ${{ github.token }}
   Stage:
-    needs: ValidateInputs
     if: inputs.action == 'stage' && inputs.environment == ''
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -104,15 +71,8 @@ jobs:
       tag: ${{ steps.release.outputs.tag }}
       source-sha: ${{ steps.release.outputs.source-sha }}
       npm-state: ${{ steps.release.outputs.npm-state }}
-      github-state: ${{ steps.release.outputs.github-state }}
-      jsr-ready: ${{ steps.release.outputs.jsr-ready }}
       release-url: ${{ steps.release.outputs.release-url }}
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-        with:
-          ref: ${{ github.sha }}
-          fetch-depth: 0
-          persist-credentials: false
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
           node-version: 26.x
@@ -123,12 +83,12 @@ jobs:
         uses: nlibjs/actions/actions/npm-release@70dd80ae972e812efcc9606d0ec5d514c8be3982
         with:
           action: ${{ inputs.action }}
-          version: ${{ inputs.version }}
+          tag: ${{ inputs.tag }}
           cleanup-source: ${{ inputs.cleanup-source }}
+          source-sha: ${{ inputs.source-sha }}
         env:
           GH_TOKEN: ${{ github.token }}
   ProtectedStage:
-    needs: ValidateInputs
     if: inputs.action == 'stage' && inputs.environment != ''
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -139,42 +99,6 @@ jobs:
       tag: ${{ steps.release.outputs.tag }}
       source-sha: ${{ steps.release.outputs.source-sha }}
       npm-state: ${{ steps.release.outputs.npm-state }}
-      github-state: ${{ steps.release.outputs.github-state }}
-      jsr-ready: ${{ steps.release.outputs.jsr-ready }}
-      release-url: ${{ steps.release.outputs.release-url }}
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-        with:
-          ref: ${{ github.sha }}
-          fetch-depth: 0
-          persist-credentials: false
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
-        with:
-          node-version: 26.x
-          package-manager-cache: false
-          registry-url: https://registry.npmjs.org
-      - run: npm install --global npm@11.21.0
-      - id: release
-        uses: nlibjs/actions/actions/npm-release@70dd80ae972e812efcc9606d0ec5d514c8be3982
-        with:
-          action: ${{ inputs.action }}
-          version: ${{ inputs.version }}
-          cleanup-source: ${{ inputs.cleanup-source }}
-        env:
-          GH_TOKEN: ${{ github.token }}
-  Finalize:
-    needs: ValidateInputs
-    if: inputs.action == 'finalize' && inputs.environment == ''
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    outputs:
-      package-name: ${{ steps.release.outputs.package-name }}
-      version: ${{ steps.release.outputs.version }}
-      tag: ${{ steps.release.outputs.tag }}
-      source-sha: ${{ steps.release.outputs.source-sha }}
-      npm-state: ${{ steps.release.outputs.npm-state }}
-      github-state: ${{ steps.release.outputs.github-state }}
-      jsr-ready: ${{ steps.release.outputs.jsr-ready }}
       release-url: ${{ steps.release.outputs.release-url }}
     steps:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
@@ -187,37 +111,8 @@ jobs:
         uses: nlibjs/actions/actions/npm-release@70dd80ae972e812efcc9606d0ec5d514c8be3982
         with:
           action: ${{ inputs.action }}
-          version: ${{ inputs.version }}
+          tag: ${{ inputs.tag }}
           cleanup-source: ${{ inputs.cleanup-source }}
-        env:
-          GH_TOKEN: ${{ github.token }}
-  ProtectedFinalize:
-    needs: ValidateInputs
-    if: inputs.action == 'finalize' && inputs.environment != ''
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    environment: ${{ inputs.environment }}
-    outputs:
-      package-name: ${{ steps.release.outputs.package-name }}
-      version: ${{ steps.release.outputs.version }}
-      tag: ${{ steps.release.outputs.tag }}
-      source-sha: ${{ steps.release.outputs.source-sha }}
-      npm-state: ${{ steps.release.outputs.npm-state }}
-      github-state: ${{ steps.release.outputs.github-state }}
-      jsr-ready: ${{ steps.release.outputs.jsr-ready }}
-      release-url: ${{ steps.release.outputs.release-url }}
-    steps:
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
-        with:
-          node-version: 26.x
-          package-manager-cache: false
-          registry-url: https://registry.npmjs.org
-      - run: npm install --global npm@11.21.0
-      - id: release
-        uses: nlibjs/actions/actions/npm-release@70dd80ae972e812efcc9606d0ec5d514c8be3982
-        with:
-          action: ${{ inputs.action }}
-          version: ${{ inputs.version }}
-          cleanup-source: ${{ inputs.cleanup-source }}
+          source-sha: ${{ inputs.source-sha }}
         env:
           GH_TOKEN: ${{ github.token }}

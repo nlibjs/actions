@@ -1,40 +1,26 @@
 import { isRecord, packageMetadata } from './json.ts';
-import type { PackageMetadata, RawInputs, Release, ReleaseInputs } from './types.ts';
+import type { PackageMetadata, RawInputs, ReleaseInputs } from './types.ts';
 
 export const VERSION = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?![\s\S])/;
 export const SHA = /^[a-f0-9]{40}(?![\s\S])/;
 export const REGISTRY = 'https://registry.npmjs.org/';
-export const TARBALL_ASSET = 'package.tgz';
-export const INTEGRITY_ASSET = 'package.integrity';
-
-export function sourceBranch(version: string): string {
-  if (!VERSION.test(version)) throw new Error('Invalid source branch version');
-  return `release-source/v${version}`;
-}
-
 export function validateInputs(input: RawInputs): ReleaseInputs {
   const action = input.action || 'verify';
-  const version = input.version || '';
+  const tag = input.tag || '';
   const cleanup = input.cleanup || 'registry';
-  if (action !== 'verify' && action !== 'stage' && action !== 'finalize')
-    throw new Error('Invalid action');
+  if (action !== 'verify' && action !== 'stage') throw new Error('Invalid action');
   if (cleanup !== 'registry' && cleanup !== 'local') throw new Error('Invalid cleanup-source');
-  if (action === 'finalize' ? !VERSION.test(version) : version !== '') {
-    throw new Error('Only finalize accepts version; use a stable version such as 1.2.3');
-  }
+  if (action === 'stage' ? !VERSION.test(tag.slice(1)) || !tag.startsWith('v') : tag !== '')
+    throw new Error('Stage requires a stable Release tag; Verify does not accept a tag');
   if (!/^[\w.-]+\/[\w.-]+(?![\s\S])/.test(input.repository || ''))
     throw new Error('Invalid caller repository');
-  if (action !== 'finalize' && !SHA.test(input.sha || '')) throw new Error('Invalid caller SHA');
-  if (
-    action !== 'verify' &&
-    (input.ref !== 'refs/heads/main' || !['push', 'workflow_dispatch'].includes(input.event || ''))
-  ) {
-    throw new Error('Publishing requires a main push or a main workflow_dispatch');
-  }
+  if (!SHA.test(input.sha || '')) throw new Error('Invalid caller SHA');
+  if (action === 'stage' && !['release', 'workflow_dispatch'].includes(input.event || ''))
+    throw new Error('Stage requires a published Release or manual Release retry');
   return {
     ...input,
     action,
-    version,
+    tag,
     cleanup,
     repository: input.repository || '',
     sha: input.sha || '',
@@ -66,34 +52,6 @@ export function validateManifest(value: unknown, repository: string): PackageMet
   return pkg;
 }
 
-export function selectRelease(releases: Release[], tag: string): Release | null {
-  const matches = releases.filter((r) => r.tag_name === tag);
-  if (matches.length > 1)
-    throw new Error(`Duplicate releases for ${tag}: ${matches.map((r) => r.id).join(', ')}`);
-  return matches[0] || null;
-}
-
-export function decideStage({
-  release,
-  published,
-  tagSha,
-}: {
-  release: Release | null;
-  published: PackageMetadata | null;
-  tagSha: string | null;
-}): 'draft' | 'published' | 'new' {
-  if (release?.draft) {
-    const names = release.assets?.map((a) => a.name) || [];
-    if (!names.includes(TARBALL_ASSET) || !names.includes(INTEGRITY_ASSET))
-      throw new Error('Existing draft has missing assets; inspect it before retrying');
-    return 'draft';
-  }
-  if (published && tagSha) return 'published';
-  if (published || tagSha || release)
-    throw new Error('npm, tag and release disagree; do not stage automatically');
-  return 'new';
-}
-
 export function changelogNotes(text: string, tag: string): string {
   const lines = text.split(/\r?\n/);
   const start = lines.findIndex((line) => line.startsWith(`## ${tag} `));
@@ -118,8 +76,4 @@ export function optionalStageId(stdout: string): string {
   } catch {
     return '';
   }
-}
-
-export function finalizeInstructions(version: string): string {
-  return `Approve this version in npmjs.com → Staged Packages. Then run the caller's Release workflow on main with action=finalize and version=${version}.`;
 }
