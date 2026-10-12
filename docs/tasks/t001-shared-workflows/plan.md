@@ -1,6 +1,6 @@
 # Shared workflow implementation and review plan
 
-Status (2026-10-12): R1 and R2 are complete. Shared implementation PR #1 and strict TypeScript follow-up PR #3 are merged. R3 changelog pilot adoption is prepared in [changelog PR #554](https://github.com/nlibjs/changelog/pull/554), pending technical review, maintainer settings confirmation, and the user's merge decision.
+Status (2026-10-12): R1 and R2 are complete. Shared implementation PR #1 and strict TypeScript follow-up PR #3 are merged. R3 changelog adoption PR #554 and plan PR #4 are merged. The first main verify attempt failed during startup because skipped shared publishing jobs requested permissions above the read-only caller's ceiling. Fix shared permission inheritance and update the caller pin, then rerun verify before the normal pilot release.
 
 Centralize release processing, pilot it in changelog, then roll out to the other four repositories and a selected gjbkz repository. Codex implements, validates, and revises; Claude performs technical review; the user makes final decisions and merges. The user shares materials with Claude. Each checkpoint includes a design or PR, changes, verification evidence, and unresolved items. Proceed only within the reviewed scope and do not merge all callers at once.
 
