@@ -1,5 +1,7 @@
 # Shared workflow task record
 
+Current status (2026-10-12): Shared PRs #1 and #3 are merged. R3 pilot adoption is prepared as [changelog PR #554](https://github.com/nlibjs/changelog/pull/554). Technical review, external settings confirmation, adoption merge, and the first normal pilot release are next. The earlier R2 status sections below are historical.
+
 ## Request and agreement
 
 Share release processing across five nlibjs repositories and support gjbkz personal callers. The user approved revised R1 and created public nlibjs/actions. R2 moves the design/plan and prepares a shared implementation PR. Merging, caller adoption, and publication remain behind the R2/R3 checkpoints.
@@ -73,3 +75,12 @@ Share release processing across five nlibjs repositories and support gjbkz perso
 ## TypeScript follow-up (Issue #2)
 
 PR #1 merged with a merge commit on 2026-10-12, preserving the R2 helper pin. The separate [TypeScript migration](../t002-release-typescript/verification.md) builds on that main commit. It adds direct Node 26 execution, strict noEmit checking, typed runtime fixtures, and checked external JSON. Caller adoption and real publication remain separate rollout steps.
+
+## R3 changelog pilot preparation
+
+- User confirmed PR #3 is merged and requested progress on the rollout plan. Verified merge commit `98dd19df1a1137e6de377fff036605e1f089b2e9`, the reviewed workflow commit `bdf4f40eafc6fd4732bb30f46fe4d611d44cb198`, and helper `ca360dbda6c47172efe9f06fee633b7e5f524609` in shared main history.
+- Prepared [changelog PR #554](https://github.com/nlibjs/changelog/pull/554) from changelog main `0b2b586369483cab60c5096d72dcc6dedc6012eb`. Added three SHA-pinned caller jobs, safe manual verify default, and a release/settings/recovery guide. Kept package.json, lockfile, source, supported Node versions, and existing compatibility CI unchanged.
+- The real shared verify pipeline passed on Node 26.11.1/npm 11.21.0, including lint, all 74 tests, build, cleanup, and tarball inspection. Guarded all release-state and publication methods to fail if verify called them. No such calls occurred.
+- Compared all 39 members before/after cleanup. Only package.json changed by removing devDependencies and renovate; the other 38 files were byte-identical. Installed the cleaned tarball into a temporary consumer and confirmed CLI help and v0.4.0 changelog generation. The existing absent main entry is recorded for separate review.
+- actionlint 1.7.12 and caller/shared contracts passed. [Detailed R3 evidence](../t003-changelog-adoption/verification.md) includes package metrics and the remaining checks.
+- Read-only npm metadata confirms 0.4.0 is public; its local version tag exists. Trusted Publisher and caller Actions settings remain for the user to confirm. No caller adoption merge, real stage/finalize, GitHub draft mutation, npm approval, or rollout to other callers occurred.
