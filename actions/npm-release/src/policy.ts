@@ -1,15 +1,19 @@
+import { isRecord, packageMetadata } from './json.ts';
+import type { PackageMetadata, RawInputs, Release, ReleaseInputs } from './types.ts';
+
 export const VERSION = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?![\s\S])/;
 export const SHA = /^[a-f0-9]{40}(?![\s\S])/;
 export const REGISTRY = 'https://registry.npmjs.org/';
 export const TARBALL_ASSET = 'package.tgz';
 export const INTEGRITY_ASSET = 'package.integrity';
 
-export function validateInputs(input) {
+export function validateInputs(input: RawInputs): ReleaseInputs {
   const action = input.action || 'verify';
   const version = input.version || '';
   const cleanup = input.cleanup || 'registry';
-  if (!['verify', 'stage', 'finalize'].includes(action)) throw new Error('Invalid action');
-  if (!['registry', 'local'].includes(cleanup)) throw new Error('Invalid cleanup-source');
+  if (action !== 'verify' && action !== 'stage' && action !== 'finalize')
+    throw new Error('Invalid action');
+  if (cleanup !== 'registry' && cleanup !== 'local') throw new Error('Invalid cleanup-source');
   if (action === 'finalize' ? !VERSION.test(version) : version !== '') {
     throw new Error('Only finalize accepts version; use a stable version such as 1.2.3');
   }
@@ -18,14 +22,22 @@ export function validateInputs(input) {
   if (action !== 'finalize' && !SHA.test(input.sha || '')) throw new Error('Invalid caller SHA');
   if (
     action !== 'verify' &&
-    (input.ref !== 'refs/heads/main' || !['push', 'workflow_dispatch'].includes(input.event))
+    (input.ref !== 'refs/heads/main' || !['push', 'workflow_dispatch'].includes(input.event || ''))
   ) {
     throw new Error('Publishing requires a main push or a main workflow_dispatch');
   }
-  return { ...input, action, version, cleanup };
+  return {
+    ...input,
+    action,
+    version,
+    cleanup,
+    repository: input.repository || '',
+    sha: input.sha || '',
+  };
 }
 
-export function validateManifest(pkg, repository) {
+export function validateManifest(value: unknown, repository: string): PackageMetadata {
+  const pkg = packageMetadata(value);
   if (!/^(?:@[a-z0-9][a-z0-9._-]*\/)?[a-z0-9][a-z0-9._-]*(?![\s\S])/.test(pkg.name || ''))
     throw new Error('Invalid npm package name');
   if (!VERSION.test(pkg.version || ''))
@@ -49,14 +61,22 @@ export function validateManifest(pkg, repository) {
   return pkg;
 }
 
-export function selectRelease(releases, tag) {
+export function selectRelease(releases: Release[], tag: string): Release | null {
   const matches = releases.filter((r) => r.tag_name === tag);
   if (matches.length > 1)
     throw new Error(`Duplicate releases for ${tag}: ${matches.map((r) => r.id).join(', ')}`);
   return matches[0] || null;
 }
 
-export function decideStage({ release, published, tagSha }) {
+export function decideStage({
+  release,
+  published,
+  tagSha,
+}: {
+  release: Release | null;
+  published: PackageMetadata | null;
+  tagSha: string | null;
+}): 'draft' | 'published' | 'new' {
   if (release?.draft) {
     const names = release.assets?.map((a) => a.name) || [];
     if (!names.includes(TARBALL_ASSET) || !names.includes(INTEGRITY_ASSET))
@@ -69,7 +89,7 @@ export function decideStage({ release, published, tagSha }) {
   return 'new';
 }
 
-export function changelogNotes(text, tag) {
+export function changelogNotes(text: string, tag: string): string {
   const lines = text.split(/\r?\n/);
   const start = lines.findIndex((line) => line.startsWith(`## ${tag} `));
   if (start === -1) throw new Error(`CHANGELOG.md has no ${tag} section`);
@@ -82,18 +102,19 @@ export function changelogNotes(text, tag) {
   return notes;
 }
 
-export function optionalStageId(stdout) {
+export function optionalStageId(stdout: string): string {
   try {
-    const data = JSON.parse(stdout);
-    const id =
-      data.stageId ??
-      Object.values(data).find((v) => v && typeof v === 'object' && v.stageId)?.stageId;
-    return typeof id === 'string' && /^[\w-]{1,200}$/.test(id) ? id : '';
+    const data: unknown = JSON.parse(stdout);
+    if (!isRecord(data) && !Array.isArray(data)) return '';
+    const nested = Object.values(data).find((v) => isRecord(v) && v.stageId);
+    const direct = isRecord(data) ? data.stageId : undefined;
+    const candidate = direct ?? (isRecord(nested) ? nested.stageId : undefined);
+    return typeof candidate === 'string' && /^[\w-]{1,200}$/.test(candidate) ? candidate : '';
   } catch {
     return '';
   }
 }
 
-export function finalizeInstructions(version) {
+export function finalizeInstructions(version: string): string {
   return `Approve this version in npmjs.com → Staged Packages. Then run the caller's Release workflow on main with action=finalize and version=${version}.`;
 }

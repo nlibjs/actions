@@ -10,20 +10,35 @@ import {
   TARBALL_ASSET,
   validateInputs,
   validateManifest,
-} from './policy.mjs';
+} from './policy.ts';
+import type {
+  NpmState,
+  PackageMetadata,
+  RawInputs,
+  Release,
+  ReleaseInputs,
+  ReleaseOutputs,
+  Runtime,
+} from './types.ts';
 
-const output = (pkg, sha, npmState, release, ready = false) => ({
+const output = (
+  pkg: PackageMetadata,
+  sha: string,
+  npmState: NpmState,
+  release: Release | null,
+  ready = false,
+): ReleaseOutputs => ({
   'package-name': pkg.name,
   version: pkg.version,
   tag: `v${pkg.version}`,
   'source-sha': sha,
   'npm-state': npmState,
   'github-state': release ? (release.draft ? 'draft' : 'published') : 'absent',
-  'jsr-ready': String(ready),
+  'jsr-ready': ready ? 'true' : 'false',
   'release-url': release?.html_url || '',
 });
 
-export async function runRelease(raw, io) {
+export async function runRelease(raw: RawInputs, io: Runtime): Promise<ReleaseOutputs> {
   const input = validateInputs(raw);
   if (input.action === 'finalize') return finalize(input, io);
   const original = validateManifest(
@@ -45,9 +60,11 @@ export async function runRelease(raw, io) {
       io.summary(
         `No-op: ${original.name}@${original.version} is already published and its tag exists. No new staging.`,
       );
+      if (!tagSha) throw new Error('Published version has no tag');
       return output(original, tagSha, 'published', release);
     }
     if (decision === 'draft') {
+      if (!release) throw new Error('Missing draft');
       const saved = await inspectAssets(release, input.repository, original.version, io);
       if (published && published.dist?.integrity !== saved.integrity)
         throw new Error('Published npm integrity differs from the draft tarball');
@@ -139,7 +156,7 @@ export async function runRelease(raw, io) {
   return output(original, input.sha, 'staged', release);
 }
 
-async function inspectAssets(release, repository, version, io) {
+async function inspectAssets(release: Release, repository: string, version: string, io: Runtime) {
   if (!SHA.test(release.target_commitish || ''))
     throw new Error('Release target_commitish must be a full commit SHA');
   if (release.tag_name !== `v${version}`)
@@ -149,8 +166,11 @@ async function inspectAssets(release, repository, version, io) {
     if (assets.filter((a) => a.name === name && a.state === 'uploaded').length !== 1)
       throw new Error(`Missing or duplicate uploaded asset: ${name}`);
   }
-  const tarball = await io.download(assets.find((a) => a.name === TARBALL_ASSET));
-  const expected = (await io.downloadText(assets.find((a) => a.name === INTEGRITY_ASSET))).trim();
+  const tarballAsset = assets.find((a) => a.name === TARBALL_ASSET);
+  const integrityAsset = assets.find((a) => a.name === INTEGRITY_ASSET);
+  if (!tarballAsset || !integrityAsset) throw new Error('Missing release assets');
+  const tarball = await io.download(tarballAsset);
+  const expected = (await io.downloadText(integrityAsset)).trim();
   const inspected = await io.inspectTarball(tarball);
   validateManifest(inspected.pkg, repository);
   if (inspected.pkg.version !== version || inspected.integrity !== expected)
@@ -158,7 +178,7 @@ async function inspectAssets(release, repository, version, io) {
   return { ...inspected, sha: release.target_commitish };
 }
 
-async function finalize(input, io) {
+async function finalize(input: ReleaseInputs, io: Runtime): Promise<ReleaseOutputs> {
   const release = selectRelease(await io.releases(), `v${input.version}`);
   if (!release) throw new Error('No saved release for this version; stage a new version first');
   const saved = await inspectAssets(release, input.repository, input.version, io);

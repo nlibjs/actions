@@ -69,3 +69,7 @@ Share release processing across five nlibjs repositories and support gjbkz perso
 - TypeScript recommendation: a separate reviewed change using direct Node 26 execution and strict noEmit type checking; retain runtime manifest/API validation.
 
 - Final helper SHA after formatting: a5969bcedb41e1968f07a01a2c9e3e7c169bbbee. Biome formatting correction applied before the final workflow pin.
+
+## TypeScript follow-up (Issue #2)
+
+PR #1 merged with a merge commit on 2026-10-12, preserving the R2 helper pin. The separate [TypeScript migration](../t002-release-typescript/verification.md) builds on that main commit. It adds direct Node 26 execution, strict noEmit checking, typed runtime fixtures, and checked external JSON. Caller adoption and real publication remain separate rollout steps.
