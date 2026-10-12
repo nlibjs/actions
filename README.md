@@ -1,12 +1,12 @@
 # nlibjs actions
 
-公開npmパッケージのリリースを共有するGitHub Actions。nlibjsと個人アカウントのリポジトリから、固定SHAで再利用workflowを呼び出す。
+Shared GitHub Actions for public npm package releases. Repositories in nlibjs and personal accounts can call the reusable workflow at a pinned commit SHA.
 
-Node 26.x、npm 11.21.0、cleanup-package-json 0.5.0を共通管理し、npmの承認待ちとGitHub Release公開を分ける。JSR公開は利用側の独立jobへ接続する。
+The workflow manages Node 26.x, npm 11.21.0, and cleanup-package-json 0.5.0. It separates npm staging from GitHub Release publication. JSR publication remains a separate job in the caller.
 
-## 利用方法
+## Usage
 
-利用repoの `.github/workflows/release.yml` から呼ぶ。参照にはこのrepoのレビュー済み完全長コミットSHAを使う。
+Call the workflow from the consumer repository's `.github/workflows/release.yml`. Pin it to a reviewed full commit SHA from this repository.
 
 ```yaml
 jobs:
@@ -19,72 +19,72 @@ jobs:
       action: stage
 ```
 
-[examples](examples/README.md)に5repoと個人repoのcaller例を置く。例の共通workflow SHAは、レビュー・マージされた版へ置き換える。JSR例の `release:jsr` scriptは利用repo側で用意する契約であり、このrepoが自動追加するものではない。
+[Examples](examples/README.md) cover the five nlibjs repositories and a personal repository. Replace their workflow SHA placeholders with a reviewed, merged version. The JSR examples require a `release:jsr` script in the caller; this repository does not add that script automatically.
 
-## 入力と出力
+## Inputs and outputs
 
-| 入力 | 既定値 | 内容 |
+| Input | Default | Description |
 |---|---|---|
 | action | verify | verify / stage / finalize |
-| version | 空 | finalizeのみ必須。vなしの通常semver |
-| environment | 空 | deployment等。指定した環境の保護ルールを使う |
-| cleanup-source | registry | registry / local。localはcleanup自身のビルド済みCLI用 |
+| version | Empty | Required only for finalize; a stable semver without a v prefix |
+| environment | Empty | An environment such as deployment; applies its protection rules |
+| cleanup-source | registry | registry / local; local uses cleanup-package-json's own built CLI |
 
-出力はpackage-name、version、tag、source-sha、npm-state、github-state、jsr-ready、release-url。finalize成功時は、公開済みGitHub Releaseの再確認でもjsr-ready=trueとなり、JSRを再試行できる。
+Outputs are package-name, version, tag, source-sha, npm-state, github-state, jsr-ready, and release-url. A successful finalize returns jsr-ready=true even when the GitHub Release is already published, allowing JSR to be retried.
 
-action/version/cleanup-sourceは実行前に検証する。入力をshellへ直接挿入しない。stage/finalizeはmainのpushまたはmainのworkflow_dispatchに限定し、verifyはpull_requestでも利用できる。
+action, version, and cleanup-source are validated before execution. Inputs are not interpolated directly into shell code. stage and finalize accept only a main push or a workflow_dispatch on main. verify also supports pull requests.
 
-## 前提
+## Requirements
 
-- package.jsonはpublicな通常versionのnpmパッケージで、repositoryがcallerのGitHub repoと一致する。
-- lockfileとlint/test/buildのnpm scriptsがある。追加準備が必要なら `release:prepare` にbuildも含める。
-- CHANGELOG.mdには `## v1.2.3 (日付)` の形式で対象版の空でないノートがある。
-- private package、private依存の認証、monorepo、prerelease、別registry、任意dist-tagは初期対象外。
-- 利用repoのActions設定がこのpublic workflowを許可する。
+- package.json describes a public npm package with a stable version, and its repository matches the caller's GitHub repository.
+- A lockfile and lint/test/build npm scripts exist. If additional preparation is needed, provide `release:prepare` and include the build in that script.
+- CHANGELOG.md has a nonempty section for the version, headed by `## v1.2.3 (date)`.
+- Private packages, authentication for private dependencies, monorepos, prereleases, other registries, and custom dist-tags are outside the initial scope.
+- The caller's Actions settings permit this public reusable workflow.
 
-Biome使用repoはdevDependenciesとlockfileで固定する。ESLint/Prettier等のrepoでも `npm run lint` の契約で利用できる。公開用Nodeを26.xへ統一しても、利用者向けの最低対応Nodeや互換性CIのmatrixは変更しない。
+Repositories using Biome pin it in devDependencies and the lockfile. ESLint/Prettier repositories also work through the `npm run lint` contract. Using Node 26.x for releases does not change the minimum Node version supported by consumers or the compatibility CI matrix.
 
-## 公開の手順
+## Release procedure
 
-1. mainのpackage.json変更、または手動stageで公開前検証を行う。checkoutは全履歴を取得する。
-2. lint/test/build後に必須cleanupを行い、tarballを1回作る。draft Releaseへtarballとintegrityを保存してからnpmへ送る。
-3. `npm stage publish`の終了コード0を成功とする。stage IDの取得は補助で、取得できなくても成功する。
-4. npmjs.comのStaged Packagesで人が2FA承認する。
-5. callerのReleaseをmainで手動実行し、action=finalize、version=承認した版を指定する。
-6. 保存したtarballとnpmのdist.integrity、固定SHAとタグを確認し、draftを公開する。JSRはこの後に実行する。
+1. A package.json change on main or a manual stage starts release verification. Checkout includes the full history.
+2. Run lint/test/build, perform mandatory cleanup, and create one tarball. Save the tarball and its integrity on a draft Release before sending it to npm.
+3. Treat exit code 0 from `npm stage publish` as success. A stage ID is optional diagnostic information; failure to extract it does not fail staging.
+4. A maintainer approves the version with 2FA in npmjs.com's Staged Packages page.
+5. Run the caller's Release workflow on main with action=finalize and version set to the approved version.
+6. Verify npm dist.integrity against the saved tarball, check the tag against the fixed SHA, and publish the draft. Run JSR afterward.
 
-承認待ちをまたいでActions runを待機させない。finalizeは最新mainを再ビルドせず、draftの固定SHAとtarballを使う。手順はdraft本文とsummaryにも表示する。
+An Actions run does not wait across the approval period. finalize uses the draft's fixed SHA and tarball rather than rebuilding the latest main. The draft body and step summary include the approval and finalize instructions.
 
-## 既存versionと失敗時
+## Existing versions and failures
 
-| 状態 | 挙動 |
+| State | Behavior |
 |---|---|
-| npm公開済みと同versionタグがある | stageは成功no-op。依存更新だけで赤くならない |
-| draftがある | 再stageせず、npm確認・承認・finalizeを案内 |
-| draftなしでnpmかタグの片方だけがある | 不整合として停止 |
-| draftやassetが重複・不足している | 候補や不足を示して停止 |
-| stageが非0、送信結果が不明 | draftを保持。npm側を人が確認するまで再送しない |
-| stageは0だが本文更新が失敗 | npm成功をsummaryに残す。draftがあるので再送しない |
-| GitHub/JSRで失敗 | npm公開とintegrityが一致する同versionでfinalizeを再実行 |
-| 同groupの待機runが置き換えられstage未実行 | 対象versionがmainにあることを確認して手動stage |
+| npm version is public and its version tag exists | stage succeeds as a no-op; dependency-only updates do not fail |
+| A draft exists | Do not re-stage; direct the maintainer to npm inspection, approval, or finalize |
+| No draft exists, and only npm or the tag exists | Stop with an inconsistency |
+| Drafts or assets are duplicated or incomplete | Stop and identify the candidates or missing assets |
+| Staging exits nonzero and its outcome is unknown | Retain the draft; do not resend until a maintainer checks npm |
+| Staging exits 0 but updating the body fails | Record npm success in the summary; do not resend while the draft exists |
+| GitHub or JSR fails | Re-run finalize for the same version when npm and the saved integrity match |
+| A pending run is replaced and stage never runs | Confirm the target version is on main, then run stage manually |
 
-finalizeは公開済みReleaseも検査できるが、新形式assetがない過去Releaseを自動改変しない。タグは既存の解決SHAを確認し、新規作成はdraft公開時のGitHub処理へ任せる。公開後にもSHAを確認する。
+finalize also inspects published Releases, but does not automatically modify historical Releases without the new assets. Resolve existing tags to their commit SHA. Let GitHub create a missing tag when publishing the draft, then verify its SHA afterward.
 
-draftは認証付きRelease一覧の全ページから探す。同じtag名が複数あれば停止し、最新候補を自動選択しない。保存情報はReleaseのtag_name/target_commitish、package.tgz、package.integrity。独自の記録schemaやstage ID依存の自動復元は持たない。
+Find drafts by paging through the authenticated release list. Stop if multiple Releases share the tag; do not choose the newest automatically. Persist only Release tag_name/target_commitish, package.tgz, and package.integrity. There is no custom record schema or stage-ID-dependent automatic recovery.
 
-403/404のRelease操作失敗を「存在しない」と解釈しない。保存targetのworkflowファイルとdefault branchが異なる場合、GitHubが追加のworkflow変更権限を要求することがある。長期tokenを自動追加せず、その場合は設定・運用を確認する。
+Do not treat a Release operation returning 403/404 as proof of absence. GitHub may require additional workflow modification permissions when the saved target's workflow files differ from the default branch. Do not add a long-lived token automatically; review the configuration and procedure instead.
 
-## 認証と権限
+## Authentication and permissions
 
-npm Trusted Publisherには **利用repoのowner/repo、release.yml、使用するenvironment** を登録する。共通repoをnpm公開元として登録しない。stageはcaller/callee双方にid-token: writeが必要。
+Register the **caller repository's owner/repository, release.yml, and environment** as the npm Trusted Publisher. Do not register this shared repository as the publishing source. Both caller and callee need id-token: write for staging.
 
-verifyはcontents: readのみ。stageはcontents: writeとid-token: writeを1jobで使い、finalizeはcontents: writeのみ。environment付きstage/finalizeは各1jobなので、必須レビュアーを追加しても操作ごとに1回の承認となる。空入力はenvironmentなしjobへ分岐する。
+verify uses contents: read. stage uses contents: write and id-token: write in one job. finalize uses contents: write. Each environment-protected operation uses one job, so adding required reviewers results in one approval per stage or finalize operation. An empty environment selects jobs without an environment.
 
-npm tokenやsecrets: inheritは不要。secretsは利用repoへ置き、他用途で必要なら明示して渡す。runnerとGITHUB_TOKENはcaller側のものを使う。publicな共通処理を利用しても、callerの非公開コードやsecretを共通repoへ保存しない。
+No npm token or secrets: inherit is required. Keep secrets in the caller and pass individual secrets explicitly when another purpose requires them. Runners and GITHUB_TOKEN belong to the caller. Caller source code and secrets are not stored in this public shared repository.
 
-## 開発と検証
+## Development and validation
 
-Node26.xとnpm11.21.0を使う。
+Use Node 26.x and npm 11.21.0.
 
 ```sh
 npm ci --ignore-scripts
@@ -94,20 +94,22 @@ npm test
 npm run check
 ```
 
-テストには書き込みを拒否するローカル模擬registryを使ったdry-runが含まれる。実registryへの公開は行わない。CIは同じfixtureを実行し、workflow契約・権限・固定SHAも検査する。
+Tests include a dry-run against a local fixture registry that rejects writes. They do not publish to the real registry. CI runs the same fixtures and checks workflow contracts, permissions, and pinned action SHAs.
 
-実際のOIDCとprovenance署名は、先行repoの通常リリースで確認する。[R2検証結果](docs/tasks/t001-shared-workflows/verification.md)に検証済みの範囲を記載する。
+Validate real OIDC authentication and provenance signing during the pilot repository's normal release. [R2 verification results](docs/tasks/t001-shared-workflows/verification.md) describe the verified scope.
 
-## 共通基盤の更新
+## Updating the shared implementation
 
-補助actionはworkflow内で完全長SHAへ固定する。更新は次の2段階で行う。
+Pin the helper action to a full commit SHA inside the workflow. Update it in two steps:
 
-1. 補助actionの変更をコミットAとして保存する。
-2. workflowの補助参照をAへ更新したコミットBを作り、組み合わせを検証する。
-3. 利用repoの共通workflow参照をBのSHAへ更新するPRを作る。
+1. Commit the helper action change as commit A.
+2. Create commit B that pins the workflow's helper reference to A, and validate the combination.
+3. Open caller PRs updating their shared workflow reference to B.
 
-問題があればcallerの参照SHAを以前の版へ戻せる。公開済みversionを巻き戻さず、失敗した公開先のみ回復する。
+If needed, revert a caller's reference to an earlier SHA. Do not roll back published versions; recover only the failed publishing destination.
 
-## 設計と導入計画
+## Design and rollout
 
-[合意済み設計](docs/tasks/t001-shared-workflows/design.md)、[担当とレビュー計画](docs/tasks/t001-shared-workflows/plan.md)、[作業記録](docs/tasks/t001-shared-workflows/record.md)。実装はCodex、技術レビューはClaude、最終承認・マージとnpmの2FA承認はユーザーが担う。定期finalizeや記録拡張は先行リリース後に判断する。
+See the [approved design](docs/tasks/t001-shared-workflows/design.md), [implementation and review plan](docs/tasks/t001-shared-workflows/plan.md), and [task record](docs/tasks/t001-shared-workflows/record.md). Codex implements and validates, Claude performs technical review, and the user makes final approval and merge decisions and approves npm with 2FA. Evaluate scheduled finalize and additional records after the pilot release.
+
+Documentation, commits, pull requests, and review comments written for nlibjs use English.

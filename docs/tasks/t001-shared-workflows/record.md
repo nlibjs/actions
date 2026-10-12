@@ -1,54 +1,57 @@
-# 共通workflowの作業記録
+# Shared workflow task record
 
-## 依頼と合意
+## Request and agreement
 
-nlibjsの5repoのリリースを共通化し、gjbkzの個人repoでも利用可能にする。修正版R1はユーザー合意済み。public nlibjs/actions作成済み。R2として設計と計画を移設し、共通実装・検証をレビュー用PRにする。マージ・パッケージ導入・公開はR2/R3以降。
+Share release processing across five nlibjs repositories and support gjbkz personal callers. The user approved revised R1 and created public nlibjs/actions. R2 moves the design/plan and prepares a shared implementation PR. Merging, caller adoption, and publication remain behind the R2/R3 checkpoints.
 
-## 計画
+## Plan
 
-1. repositoryと実行環境、固定npm/cleanup/Actionsの仕様を確認する。
-2. verify/stage/finalizeのinterfaceと補助actionを実装する。
-3. no-op、終了コード、draft/asset、タグ/配布物整合性、権限を検証する。
-4. 5repoのverifyと文書・caller例を整え、R2のPRを提示する。
+1. Inspect repository/runtime and fixed npm/cleanup/Actions behavior.
+2. Implement verify/stage/finalize and the helper action.
+3. Validate no-ops, exit status, drafts/assets, tags/package integrity, and permissions.
+4. Verify all five repositories, prepare docs/examples, and present the R2 PR.
 
-## 進捗
+## Progress
 
-- mainにはREADMEとApache 2.0 LICENSEのみ。作業branch feat/shared-npm-releaseを作成した。
-- R1の4入力、Node26.x、全件cleanup、stage1job、stage ID補助、draft+tarball+integrity、手動finalizeを実装方針とする。
+- Initial main contained README and Apache 2.0 LICENSE. Created feat/shared-npm-release.
+- Implement the four-input R1 interface, Node 26.x, mandatory cleanup, one stage job, optional stage ID, draft/tarball/integrity, and manual finalize.
 
-## 重要な判断
+## Decisions
 
-- 現在の実装範囲に独自記録schemaや自動finalizeは含めない。
-- 実registryの公開試験は行わない。
+- Exclude custom record schemas and automatic finalize from the initial implementation.
+- Do not test publication against the real registry.
 
-## 検証結果
+## Implementation and initial verification
 
-- 以下へ進行に合わせて記録する。
+- Confirmed that cleanup 0.5.0 and npm 11.21.0 are public. Inspected the fixed npm source: stage inherits publish and handles tarball input, JSON stageId, and provenance options.
+- Implemented policy, release orchestration, GitHub/npm/filesystem adapters, a composite action, and a reusable workflow. Include exit-0 success, optional IDs, successful no-ops, assets saved before staging, and finalize integrity/tag checks.
+- Resolved existing v7 SHAs for checkout/setup-node. Pin the helper after its implementation commit.
+- The first 21 fixtures passed. The additional tarball dry-run required a permitted local listener because of sandbox restrictions.
+- Initial Node 26.5.0/npm 11.21.0 verification completed for four repositories while lint-commit continued; it later completed successfully.
+- Fixed npm acquisition initially failed because the elevated shell had a different PATH. Used absolute Node/npm paths. Moved verification cache into a temporary work directory to avoid home-directory write restrictions.
 
-### R2実装と初期検証
+## Final verification and PR preparation
 
-- cleanup0.5.0/npm11.21.0の公開を確認。固定npmソースでstageがpublish実装を継承しtarball入力、JSON stageId、provenanceオプションを扱うことを確認した。
-- policy、release orchestration、GitHub/npm/filesystem adapter、composite action、reusable workflowを実装。終了コード0とstage ID補助、成功no-op、draft assetの事前保存、finalize integrity/タグ照合を含む。
-- GitHub actions/checkout、setup-node等のv7実在SHAを取得した。helper actionの参照SHAは補助実装コミット後に固定する。
-- fixture21件は合格。tarball dry-run追加検証はローカル待受のsandbox制限により別実行へ変更した。
-- Node26.5.0/npm11.21.0でchangelog、cleanup-package-json、typing、negotiateのverifyが成功。lint-commitは実行中。
-- 初回npm固定版取得はescalated環境のPATH差で失敗したためNode/npm絶対パスで取得。検証用cacheを作業用tempへ移し、sandboxのhome書込制約に依存しないようにした。
+- All 24 fixtures/dry-runs passed, and all five repository verify runs succeeded on Node 26.5.0/npm 11.21.0. lint-commit passed 47 tests and packaging.
+- The fixed CLI's JSON output is nested by package name. Adapted the dry-run assertion to the real output. The fixture registry received no writes.
+- Pinned Biome 2.5.15 as this repository's devDependency. Lint/format checks and actionlint 1.7.12 passed.
+- Helper commit A: 3fb64859ff81c0ee9699aafa75a74acf28d9a070. Pinned the workflow to A.
+- Git signing initially failed because the sandbox could not reach gpg-agent. Retained configured signing and committed successfully in the permitted execution environment.
+- Moved R1 design/plan into docs/tasks, added six examples and verification results, and retained the existing LICENSE.
+- Real OIDC, provenance signing, and draft publication remain for a normal pilot release after R3. Fixture/dry-run success is not proof of successful real publication.
 
-### R2最終検証とPR準備
+## R2 status
 
-- 24件のfixture/dry-runが成功。Node26.5.0/npm11.21.0で全5repoのverifyが成功。lint-commitもテスト47件とpackまで正常終了した。
-- 初期tarballテストのJSON出力はpackage名でネストされていたため、固定CLIの実出力に合わせて確認した。dry-runに書き込みなし。
-- Biome2.5.15をこのrepoの開発依存へ固定し、lint/整形を確認。actionlint1.7.12も成功。
-- 補助actionコミットAは3fb64859ff81c0ee9699aafa75a74acf28d9a070。共通workflowの参照をこのSHAへ固定した。
-- Git署名はsandbox内のgpg-agentアクセス制限で最初失敗。設定済み署名を維持し、許可された実行環境でコミットに成功した。
-- R1資料と計画をdocs/tasksへ移設。例6件、README、検証結果を整理した。既存LICENSEは維持。
-- 実際のOIDC、provenance署名、draft公開はR3後の通常リリースで確認する。fixture/dry-runの成功と実公開成功を区別する。
-- レビュー用PRを作成予定。mainへのマージ、caller導入、npm/GitHub/JSR公開は行っていない。
+- Draft PR: https://github.com/nlibjs/actions/pull/1
+- Branch: feat/shared-npm-release. Workflow/documentation commit B: d577ffcdcc47ba0d0fe3430c6dd566c3d2655423.
+- GitHub Validate passed lint, 24 tests, and workflow contracts: https://github.com/nlibjs/actions/actions/runs/38199788600.
+- Documentation head 7743407c4ff13bf1c2108dfc2ba9343337eac4f9 also passed both push and PR checks: runs 38199880438 and 38199883514.
+- The initial PR attempt preceded branch upload completion and failed because the head ref was absent. Recreated it successfully after upload completed.
+- R2 preparation is complete; await Claude technical review and the user's final decision. No main merge, caller adoption, or npm/GitHub/JSR publication has occurred.
 
-## R2の最終状態
+## English language requirement
 
-- draft PR: https://github.com/nlibjs/actions/pull/1
-- branch: feat/shared-npm-release。補助actionコミットAへ固定したworkflowを含むコミットBはd577ffcdcc47ba0d0fe3430c6dd566c3d2655423。
-- GitHub上のValidate jobはlint、24件のtest、workflow契約checkを含め成功した（https://github.com/nlibjs/actions/actions/runs/38199788600）。
-- branch送信が完了する前のPR作成はhead ref未存在で失敗。送信完了後に再作成し成功した。mainや他repoには変更していない。
-- R2準備完了。Claudeの技術レビューとユーザーの最終判断を待つ。マージ・R3導入・実公開は進めない。
+- The user requested English for all nlibjs organization writes.
+- Translate repository README, design, plan, task record, verification results, examples guide, and the PR body into English. Preserve implementation behavior and approved constraints.
+- Keep future repository documents, commit messages, PRs, and comments in English. Chat communication remains Japanese.
+- Check all changed document links/code fences, scan tracked text for remaining Japanese, and confirm that only documentation changed.

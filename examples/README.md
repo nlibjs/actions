@@ -1,32 +1,32 @@
-# リリースworkflowの呼び出し例
+# Release workflow caller examples
 
-各callerは利用repoの `.github/workflows/release.yml` へ置く。`REPLACE_WITH_COMMON_WORKFLOW_SHA` はレビュー・マージ済みの完全長SHAへ置き換える。例はrepoへ自動導入されない。
+Place each caller in its repository's `.github/workflows/release.yml`. Replace `REPLACE_WITH_COMMON_WORKFLOW_SHA` with a reviewed, merged full commit SHA. These examples are not installed automatically.
 
-| 例 | 固有設定 |
+| Example | Repository-specific settings |
 |---|---|
-| changelog.release.yml | npmのみ |
+| changelog.release.yml | npm only |
 | lint-commit.release.yml | environment: deployment |
-| cleanup-package-json.release.yml | deployment、cleanup-source: local |
-| typing.release.yml | finalize後にJSR |
-| negotiate.release.yml | finalize後にDenoでJSR |
-| gjbkz-package.release.yml | owner固定なし。選定repoへ適合確認して利用 |
+| cleanup-package-json.release.yml | deployment and cleanup-source: local |
+| typing.release.yml | JSR after finalize |
+| negotiate.release.yml | JSR through Deno after finalize |
+| gjbkz-package.release.yml | No fixed owner; validate compatibility with the selected repository |
 
-manual actionはverify（公開しない検査）、stage（mainのpackage.jsonの版）、finalize（指定version）から選ぶ。finalizeのversionはvなしの通常semverだけを扱う。prerelease、別registry、monorepoは初期対象外。
+Manual operations are verify (inspection without publishing), stage (the version in main's package.json), and finalize (the specified version). finalize accepts only a stable semver without a v prefix. Prereleases, other registries, and monorepos are outside the initial scope.
 
-npm承認後はmainでaction=finalizeとversionを指定する。GitHub/JSRの失敗後も同じ操作で回復する。待機runが置き換えられstageされていなければ、対象versionがmainにあることを確認して手動stageする。
+After npm approval, select main, action=finalize, and the approved version. Use the same operation to recover a GitHub/JSR failure. If a pending run was replaced before staging, confirm the target version is on main and run stage manually.
 
-npm公開済みとタグが揃う同versionはstage成功no-op。draftがあれば再送せず承認/finalizeを案内する。片方だけや通信失敗を未公開とはみなさない。
+A version already public on npm with a matching version tag is a successful stage no-op. A draft prevents resending and directs the maintainer to approval/finalize. One-sided states or communication failures are not interpreted as unpublished versions.
 
-## JSR側の準備
+## JSR preparation
 
-typing/negotiateの例は `release:jsr` scriptを利用repoへ追加する契約を含む。metadataと既存versionの内容・公開元を照合し、未公開時だけbuild/dry-run/publishする。typingは現行npx jsr、negotiateはcheck:release・build:index・生成物diff・Deno publishを継承する。CLIの版は導入時に固定する。
+The typing/negotiate examples require a `release:jsr` script in the caller. It checks metadata and the content/source of an existing version, and builds, dry-runs, and publishes only when the version is absent. Preserve typing's existing npx jsr flow and negotiate's check:release, build:index, generated-file diff, and Deno publish flow. Pin the CLI version during adoption.
 
-callerは共通側のsource-shaをcheckoutする。finalizeは公開済みGitHub Releaseでもjsr-ready=trueを返すので、JSRだけを再試行できる。npx jsr scriptの追加はこのPRでは行わず、R4以降の各導入PRでレビューする。
+Check out the source-sha returned by the shared workflow. finalize returns jsr-ready=true even for an already published GitHub Release, so JSR can be retried independently. Add release:jsr in the individual adoption PRs after R4; this PR does not add caller scripts.
 
-## npm設定
+## npm configuration
 
-Trusted Publisherはcallerのowner/repo/release.yml/environmentを登録する。個人repoならownerはgjbkz。nlibjs/actions自体を公開元に登録しない。npm tokenやsecrets: inheritは不要。
+Register the caller's owner/repository/release.yml/environment as its Trusted Publisher. The personal repository owner is gjbkz. Do not register nlibjs/actions as the publishing source. No npm token or secrets: inherit is required.
 
-## 更新
+## Updating references
 
-補助action変更のコミットA、workflow参照更新のコミットBを作り、Bを検証してcallerへ提示する。詳細はルートREADMEに記載する。
+Create helper action commit A, then workflow reference commit B. Validate B before proposing it to callers. The root README describes this procedure.

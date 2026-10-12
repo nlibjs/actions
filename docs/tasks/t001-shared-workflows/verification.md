@@ -1,36 +1,36 @@
-# R2の検証結果
+# R2 verification results
 
-共通実装は公開を伴わない検証を行った。利用repoは作業用コピーでのみcleanupし、remoteへの変更やnpm/GitHub/JSR公開は行っていない。
+The shared implementation was verified without publishing. Cleanup ran only in working copies of caller repositories. No caller remote changes or npm/GitHub/JSR publications were performed.
 
-## 5repoの公開前検証
+## Release verification across five repositories
 
-各固定SHAでnpm11.21.0を使い、npm ci、lint、test、build、cleanup、pack、配布package.jsonの保持フィールドを確認した。checkoutは全履歴。
+At each fixed SHA, use npm 11.21.0 to run npm ci, lint, test, build, cleanup, and pack, and check that consumer fields remain in the packaged package.json. Checkout includes the full history.
 
-| repo | 固定SHA | Node | verify |
+| Repository | Fixed SHA | Node | verify |
 |---|---|---|---|
-| changelog | `0b2b586369483cab60c5096d72dcc6dedc6012eb` | v26.5.0 | 成功 |
-| lint-commit | `b8911187707ec7b7fee83ca1e3fb52002a48ad24` | v26.5.0 | 成功 |
-| cleanup-package-json | `13e2553fa61b35b44eb26bdbdc37ff8c47f43e07` | v26.5.0 | 成功 |
-| typing | `15c296e06c959e97cf997c625dbf3941f876f50d` | v26.5.0 | 成功 |
-| negotiate | `185ed8850f37f3f8183429ead55c5cb8fe6c3394` | v26.5.0 | 成功 |
+| changelog | `0b2b586369483cab60c5096d72dcc6dedc6012eb` | v26.5.0 | Passed |
+| lint-commit | `b8911187707ec7b7fee83ca1e3fb52002a48ad24` | v26.5.0 | Passed |
+| cleanup-package-json | `13e2553fa61b35b44eb26bdbdc37ff8c47f43e07` | v26.5.0 | Passed |
+| typing | `15c296e06c959e97cf997c625dbf3941f876f50d` | v26.5.0 | Passed |
+| negotiate | `185ed8850f37f3f8183429ead55c5cb8fe6c3394` | v26.5.0 | Passed |
 
-cleanup-package-json自身はビルド済みlocal CLI、他4件は固定registry版0.5.0を使用した。依存・exports・型情報・bin・sideEffectsなどを元のpackage.jsonと比較し、devDependencies/renovate除去と配布ファイルを確認した。既存CIのOS/Node/Bun/Deno matrixを代替する結果ではない。
+cleanup-package-json uses its built local CLI. The other four use the pinned registry version 0.5.0. Compare dependencies, exports, type metadata, bin, sideEffects, and other consumer fields against the original package.json. Check removal of devDependencies/renovate and inspect package contents. These results do not replace the existing OS/Node/Bun/Deno CI matrices.
 
-## 共通実装の検証
+## Shared implementation verification
 
-24件のfixture/dry-runテストが合格。Biomeのlint、actionlint、workflow契約検査を実行した。
+All 24 fixture/dry-run tests passed. Biome lint, actionlint, and workflow contract checks also ran successfully.
 
-- 成功no-op、npmとタグの不整合、重複draft、通信/権限失敗、終了コード0でstage IDなし、非0と送信結果不明をfixtureで検証。
-- tarball/integrity保存前にnpmへ送らないこと、stage成功後の本文更新失敗で再送しないことを検証。
-- finalizeのnpm integrity、完全長target、annotated tag、公開済み再実行とJSR再試行の出力を検証。
-- 実cleanupとnpm packを使用し、利用者向けフィールドを保持することを確認。
-- 書き込みを拒否するローカルregistryとnpm11.21.0のstage dry-runで、保存tarballが入力でき、integrityが変わらず、registryへの書き込みがないことを確認。
-- actionlint1.7.12でworkflow構文・式を確認。YAML、権限、inputs/outputs、caller契約、固定action参照も検証する。
+- Verify successful no-ops, inconsistent npm/tag states, duplicate drafts, communication/permission errors, exit 0 without a stage ID, and nonzero exits with unknown outcomes.
+- Verify that npm is not called before saving the tarball/integrity, and that a receipt update failure after successful staging does not cause resending.
+- Verify finalize integrity checks, full commit targets, annotated tags, already-published retries, and outputs enabling independent JSR retries.
+- Use real cleanup and npm pack to verify preservation of consumer fields.
+- Use npm 11.21.0 stage dry-run against a local registry that rejects writes. Confirm that it accepts the saved tarball, preserves integrity, and performs no registry writes.
+- Validate workflow syntax and expressions with actionlint 1.7.12. Check YAML, permissions, inputs/outputs, caller contracts, and pinned action references.
 
-## 導入時に残る確認
+## Checks remaining during adoption
 
-実際のOIDCとprovenance署名はR3後のchangelog通常リリースで確認する。dry-runは署名・npm registryのstage作成を実証するものではない。
+Validate real OIDC authentication and provenance signing during changelog's normal release after R3. A dry-run does not establish signing or successful stage creation on the npm registry.
 
-GitHubのdraft作成・asset保存・公開に必要なtoken権限とtarget workflow差分の制約も通常リリースで確認する。失敗は未存在と解釈しない。JSRは各導入PRでrelease:jsr scriptと独立した検証を追加する。
+Validate token permissions for GitHub draft creation, asset upload, and publication, including restrictions when target workflow files differ from the default branch. Do not interpret failures as absence. Individual JSR adoption PRs add release:jsr and its own verification.
 
-R2でパッケージへの導入・公開やマージは行わない。
+R2 does not include caller adoption, publication, or merging.
