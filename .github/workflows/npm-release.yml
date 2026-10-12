@@ -53,7 +53,7 @@ jobs:
           registry-url: https://registry.npmjs.org
       - run: npm install --global npm@11.21.0
       - id: release
-        uses: nlibjs/actions/actions/npm-release@2d5dc9c0f9a7dd94e35691b4353f42e0895f54ec
+        uses: nlibjs/actions/actions/npm-release@4e12232e9335a9e28acd488867d3a9411f0a5904
         with:
           action: ${{ inputs.action }}
           tag: ${{ inputs.tag }}
@@ -81,7 +81,7 @@ jobs:
           registry-url: https://registry.npmjs.org
       - run: npm install --global npm@11.21.0
       - id: release
-        uses: nlibjs/actions/actions/npm-release@2d5dc9c0f9a7dd94e35691b4353f42e0895f54ec
+        uses: nlibjs/actions/actions/npm-release@4e12232e9335a9e28acd488867d3a9411f0a5904
         with:
           action: ${{ inputs.action }}
           tag: ${{ inputs.tag }}
@@ -100,7 +100,7 @@ jobs:
       - name: Submit npm tarball
         id: submit
         if: steps.release.outputs.submit == 'true'
-        uses: nlibjs/actions/actions/npm-release@2d5dc9c0f9a7dd94e35691b4353f42e0895f54ec
+        uses: nlibjs/actions/actions/npm-release@4e12232e9335a9e28acd488867d3a9411f0a5904
         with:
           action: stage
           phase: submit
@@ -139,7 +139,7 @@ jobs:
           registry-url: https://registry.npmjs.org
       - run: npm install --global npm@11.21.0
       - id: release
-        uses: nlibjs/actions/actions/npm-release@2d5dc9c0f9a7dd94e35691b4353f42e0895f54ec
+        uses: nlibjs/actions/actions/npm-release@4e12232e9335a9e28acd488867d3a9411f0a5904
         with:
           action: ${{ inputs.action }}
           tag: ${{ inputs.tag }}
@@ -158,7 +158,7 @@ jobs:
       - name: Submit npm tarball
         id: submit
         if: steps.release.outputs.submit == 'true'
-        uses: nlibjs/actions/actions/npm-release@2d5dc9c0f9a7dd94e35691b4353f42e0895f54ec
+        uses: nlibjs/actions/actions/npm-release@4e12232e9335a9e28acd488867d3a9411f0a5904
         with:
           action: stage
           phase: submit
