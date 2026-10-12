@@ -2,18 +2,25 @@ import assert from 'node:assert/strict';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
+import type { TestContext } from 'node:test';
 import test from 'node:test';
 import {
   changelogNotes,
   selectRelease,
   validateInputs,
-} from '../actions/npm-release/src/policy.mjs';
-import { runRelease } from '../actions/npm-release/src/release.mjs';
-import { createRuntime } from '../actions/npm-release/src/runtime.mjs';
+} from '../actions/npm-release/src/policy.ts';
+import { runRelease } from '../actions/npm-release/src/release.ts';
+import { createRuntime } from '../actions/npm-release/src/runtime.ts';
+import type {
+  PackageMetadata,
+  RawInputs,
+  Release,
+  Runtime,
+} from '../actions/npm-release/src/types.ts';
 
 const sha = 'a'.repeat(40);
 const repository = 'example/widget';
-const pkg = {
+const pkg: PackageMetadata = {
   name: '@example/widget',
   version: '1.2.3',
   repository: `https://github.com/${repository}`,
@@ -24,7 +31,8 @@ const pkg = {
   devDependencies: { tool: '1.0.0' },
   renovate: {},
 };
-const input = {
+const input: RawInputs = {
+  cwd: process.cwd(),
   action: 'stage',
   version: '',
   cleanup: 'registry',
@@ -34,7 +42,7 @@ const input = {
   event: 'push',
 };
 const integrity = 'sha512-test';
-const draft = {
+const draft: Release = {
   id: 1,
   tag_name: 'v1.2.3',
   target_commitish: sha,
@@ -45,11 +53,15 @@ const draft = {
     { id: 11, name: 'package.integrity', state: 'uploaded' },
   ],
 };
-const cleaned = Object.fromEntries(
-  Object.entries(pkg).filter(([k]) => !['devDependencies', 'renovate'].includes(k)),
-);
+const cleaned: PackageMetadata = {
+  name: pkg.name,
+  version: pkg.version,
+  ...Object.fromEntries(
+    Object.entries(pkg).filter(([k]) => !['devDependencies', 'renovate'].includes(k)),
+  ),
+};
 
-async function fixture(t, overrides = {}) {
+async function fixture(t: TestContext, overrides: Partial<Runtime> = {}) {
   const cwd = await mkdtemp(join(tmpdir(), 'release-test-'));
   t.after(() => rm(cwd, { recursive: true, force: true }));
   await writeFile(join(cwd, 'package.json'), JSON.stringify(pkg));
@@ -57,15 +69,19 @@ async function fixture(t, overrides = {}) {
     join(cwd, 'CHANGELOG.md'),
     '# Changelog\n\n## v1.2.3 (2026-10-12)\n\nUseful change.\n\n## v1.2.2 (2026-01-01)\n\nOlder.\n',
   );
-  const calls = [],
-    summaries = [];
-  let releaseList = [];
-  const io = {
+  const calls: string[] = [],
+    summaries: string[] = [];
+  let releaseList: Release[] = [];
+  const io: Runtime = {
     releases: async () => releaseList,
     published: async () => null,
     tagSha: async () => null,
-    prepare: async () => calls.push('prepare'),
-    cleanup: async () => calls.push('cleanup'),
+    prepare: async () => {
+      calls.push('prepare');
+    },
+    cleanup: async () => {
+      calls.push('cleanup');
+    },
     pack: async () => ({
       pkg: cleaned,
       integrity,
@@ -74,19 +90,26 @@ async function fixture(t, overrides = {}) {
     }),
     createDraft: async (_tag, _sha, body) => {
       calls.push('draft');
-      releaseList = [{ ...draft, body }];
-      return releaseList[0];
+      const created = { ...draft, body };
+      releaseList = [created];
+      return created;
     },
-    upload: async () => calls.push('tarball'),
-    uploadText: async () => calls.push('integrity'),
+    upload: async () => {
+      calls.push('tarball');
+    },
+    uploadText: async () => {
+      calls.push('integrity');
+    },
     download: async () => '/saved/package.tgz',
     downloadText: async () => `${integrity}\n`,
-    inspectTarball: async () => ({ pkg: cleaned, integrity }),
+    inspectTarball: async () => ({ pkg: cleaned, integrity, files: ['package/package.json'] }),
     stage: async () => {
       calls.push('stage');
       return { code: 0, stdout: 'unrecognised successful output' };
     },
-    updateBody: async () => calls.push('receipt'),
+    updateBody: async () => {
+      calls.push('receipt');
+    },
     publishDraft: async (release) => {
       calls.push('publish');
       return { ...release, draft: false };
@@ -106,7 +129,7 @@ test('legacy published version and tag are a successful no-op after a dependency
   assert.equal(result['npm-state'], 'published');
   assert.equal(result['jsr-ready'], 'false');
   assert.deepEqual(f.calls, []);
-  assert.match(f.summaries[0], /No-op/);
+  assert.match(f.summaries[0] || '', /No-op/);
 });
 
 for (const [name, overrides] of [
@@ -121,7 +144,7 @@ for (const [name, overrides] of [
       },
     },
   ],
-]) {
+] satisfies [string, Partial<Runtime>][]) {
   test(`${name} cannot trigger a new stage`, async (t) => {
     const f = await fixture(t, overrides);
     await assert.rejects(runRelease(f.input, f.io));
@@ -251,7 +274,7 @@ for (const [name, overrides] of [
     },
   ],
   ['branch-name target', { releases: async () => [{ ...draft, target_commitish: 'main' }] }],
-]) {
+] satisfies [string, Partial<Runtime>][]) {
   test(`finalize rejects ${name}`, async (t) => {
     const f = await fixture(t, { releases: async () => [draft], ...overrides });
     await assert.rejects(runRelease({ ...f.input, action: 'finalize', version: '1.2.3' }, f.io));
@@ -300,12 +323,13 @@ test('real registry cleanup and tarball inspection retain consumer fields', asyn
 });
 
 test('GitHub adapter paginates draft search and resolves annotated tags', async () => {
-  const seen = [];
-  const fetcher = async (url) => {
+  const seen: string[] = [];
+  const fetcher: typeof fetch = async (request) => {
+    const url = String(request);
     seen.push(url);
     if (new URL(url).searchParams.get('page') === '1')
       return Response.json(
-        Array.from({ length: 100 }, (_, id) => ({ id, tag_name: `v0.0.${id}`, draft: true })),
+        Array.from({ length: 100 }, (_, id) => ({ ...draft, id, tag_name: `v0.0.${id}` })),
       );
     if (new URL(url).searchParams.get('page') === '2') return Response.json([draft]);
     if (url.includes('/git/ref/'))
@@ -314,7 +338,9 @@ test('GitHub adapter paginates draft search and resolves annotated tags', async 
     throw new Error('Unexpected request');
   };
   const io = await createRuntime({ repository, fetcher });
-  assert.equal(selectRelease(await io.releases(), 'v1.2.3').id, draft.id);
+  const selected = selectRelease(await io.releases(), 'v1.2.3');
+  assert.ok(selected);
+  assert.equal(selected.id, draft.id);
   assert.equal(await io.tagSha('v1.2.3'), sha);
   assert.equal(seen.length, 4);
 });

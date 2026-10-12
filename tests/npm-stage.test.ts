@@ -4,7 +4,8 @@ import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import test from 'node:test';
-import { command, createRuntime } from '../actions/npm-release/src/runtime.mjs';
+import { isRecord } from '../actions/npm-release/src/json.ts';
+import { command, createRuntime } from '../actions/npm-release/src/runtime.ts';
 
 test('npm 11.21.0 stage accepts a saved tarball without changing its integrity', async (t) => {
   const cwd = await mkdtemp(join(tmpdir(), 'npm-stage-fixture-'));
@@ -19,7 +20,7 @@ test('npm 11.21.0 stage accepts a saved tarball without changing its integrity',
     }),
   );
   await writeFile(join(cwd, 'index.js'), 'module.exports = 1;');
-  const env = { ...process.env, npm_config_cache: join(cwd, 'cache') };
+  const env: NodeJS.ProcessEnv = { ...process.env, npm_config_cache: join(cwd, 'cache') };
   for (const key of [
     'GH_TOKEN',
     'GITHUB_TOKEN',
@@ -49,12 +50,14 @@ test('npm 11.21.0 stage accepts a saved tarball without changing its integrity',
     res.setHeader('Content-Type', 'application/json');
     res.end(JSON.stringify({ name: '@example/staging-fixture', versions: {}, 'dist-tags': {} }));
   });
-  await new Promise((resolveListen) => server.listen(0, '127.0.0.1', resolveListen));
+  await new Promise<void>((resolveListen) => server.listen(0, '127.0.0.1', resolveListen));
   t.after(() => {
     server.closeAllConnections();
     server.close();
   });
-  const registry = `http://127.0.0.1:${server.address().port}`;
+  const address = server.address();
+  assert.ok(address && typeof address !== 'string');
+  const registry = `http://127.0.0.1:${address.port}`;
   const result = await command(
     'npm',
     [
@@ -71,10 +74,12 @@ test('npm 11.21.0 stage accepts a saved tarball without changing its integrity',
     { cwd, env },
   );
   assert.equal(result.code, 0, result.stderr);
-  const metadata = JSON.parse(result.stdout);
+  const metadata: unknown = JSON.parse(result.stdout);
+  assert.ok(isRecord(metadata));
   const contents = metadata.integrity
     ? metadata
-    : Object.values(metadata).find((v) => v?.integrity);
-  assert.equal(contents?.integrity, packed.integrity);
+    : Object.values(metadata).find((v) => isRecord(v) && v.integrity);
+  assert.ok(isRecord(contents));
+  assert.equal(contents.integrity, packed.integrity);
   assert.equal(writes, 0, 'dry-run must never write to the registry');
 });

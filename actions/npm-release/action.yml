@@ -50,4 +50,4 @@ runs:
         RELEASE_ACTION: ${{ inputs.action }}
         RELEASE_VERSION: ${{ inputs.version }}
         RELEASE_CLEANUP_SOURCE: ${{ inputs.cleanup-source }}
-      run: node "$COMMON_ACTION_PATH/src/cli.mjs"
+      run: node "$COMMON_ACTION_PATH/src/cli.ts"

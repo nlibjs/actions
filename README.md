@@ -94,10 +94,13 @@ Use Node 26.x and npm 11.21.0.
 ```sh
 npm ci --ignore-scripts
 npm ci --prefix actions/npm-release --ignore-scripts
+npm run typecheck
 npm run lint
 npm test
 npm run check
 ```
+
+The helper, tests, and workflow checks use `.ts` ES modules with explicit import extensions. Node 26 executes them directly using built-in type stripping; no generated JavaScript, bundler, or runtime loader is needed. Type stripping does not check types: run `npm run typecheck` separately. The pinned TypeScript and Node type dependencies are development-only, and validation CI runs `tsc --noEmit` with strict checking, unchecked-index checking, and `erasableSyntaxOnly`. Use only erasable syntax (no enums or parameter properties).
 
 Tests include a dry-run against a local fixture registry that rejects writes. They do not publish to the real registry. CI runs the same fixtures and checks workflow contracts, permissions, and pinned action SHAs.
 

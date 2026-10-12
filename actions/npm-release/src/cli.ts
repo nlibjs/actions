@@ -1,8 +1,10 @@
 import { appendFile } from 'node:fs/promises';
-import { runRelease } from './release.mjs';
-import { createRuntime } from './runtime.mjs';
+import { runRelease } from './release.ts';
+import { createRuntime } from './runtime.ts';
 
-let io;
+import type { Runtime } from './types.ts';
+
+let io: Runtime | undefined;
 try {
   if (Number(process.versions.node.split('.')[0]) !== 26)
     throw new Error('Release tooling requires Node 26.x');
@@ -17,7 +19,7 @@ try {
     cwd: process.env.GITHUB_WORKSPACE || process.cwd(),
   };
   io = await createRuntime({
-    repository: input.repository,
+    repository: input.repository || '',
     actionPath: process.env.COMMON_ACTION_PATH,
   });
   const result = await runRelease(input, io);
@@ -28,7 +30,7 @@ try {
     }
   }
 } catch (error) {
-  console.error(error.message);
+  console.error(error instanceof Error ? error.message : String(error));
   process.exitCode = 1;
 } finally {
   await io?.pendingSummary;

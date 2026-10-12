@@ -3,9 +3,28 @@ import { createHash } from 'node:crypto';
 import { appendFile, mkdtemp, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { REGISTRY, SHA } from './policy.mjs';
+import { githubRelease, gitObject, isRecord, packageMetadata, record } from './json.ts';
+import { REGISTRY, SHA } from './policy.ts';
+import type { CommandResult, Release, Runtime } from './types.ts';
 
-export async function command(program, args, options = {}) {
+interface CommandOptions {
+  cwd?: string;
+  env?: NodeJS.ProcessEnv;
+  log?: boolean;
+}
+interface RuntimeOptions {
+  repository: string;
+  actionPath?: string;
+  npm?: [string, ...string[]];
+  fetcher?: typeof fetch;
+  env?: NodeJS.ProcessEnv;
+}
+
+export async function command(
+  program: string,
+  args: string[],
+  options: CommandOptions = {},
+): Promise<CommandResult & { stderr: string }> {
   return new Promise((resolve, reject) => {
     const child = spawn(program, args, {
       cwd: options.cwd,
@@ -34,12 +53,12 @@ export async function createRuntime({
   npm = ['npm'],
   fetcher = fetch,
   env = process.env,
-}) {
+}: RuntimeOptions): Promise<Runtime> {
   const work = await mkdtemp(join(env.RUNNER_TEMP || tmpdir(), 'nlib-release-'));
   env = { ...env, npm_config_cache: join(work, 'npm-cache') };
-  const npmRun = (args, cwd, log = false) =>
+  const npmRun = (args: string[], cwd: string, log = false) =>
     command(npm[0], [...npm.slice(1), ...args], { cwd, log, env });
-  const must = async (program, args, options) => {
+  const must = async (program: string, args: string[], options: CommandOptions = {}) => {
     const result = await command(program, args, { env, ...options });
     if (result.code !== 0)
       throw new Error(`${program} failed (exit ${result.code}): ${result.stderr.slice(-4000)}`);
@@ -52,7 +71,7 @@ export async function createRuntime({
     'X-GitHub-Api-Version': '2022-11-28',
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
   };
-  const request = async (url, init = {}, allow404 = false) => {
+  const request = async (url: string, init: RequestInit = {}, allow404 = false) => {
     const parsed = new URL(url);
     if (
       !['api.github.com', 'uploads.github.com'].includes(parsed.hostname) ||
@@ -71,40 +90,44 @@ export async function createRuntime({
       );
     return response;
   };
-  const jsonRequest = async (url, init, allow404) => {
+  const jsonRequest = async (
+    url: string,
+    init?: RequestInit,
+    allow404 = false,
+  ): Promise<unknown> => {
     const response = await request(url, init, allow404);
     return response ? response.json() : null;
   };
-  const mutate = (url, method, payload) =>
+  const mutate = (url: string, method: string, payload: Record<string, unknown>) =>
     jsonRequest(url, {
       method,
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
     });
 
-  const io = {
+  const io: Runtime = {
     async releases() {
-      const releases = [];
+      const releases: Release[] = [];
       for (let page = 1; ; page++) {
         const batch = await jsonRequest(`${apiBase}/releases?per_page=100&page=${page}`);
         if (!Array.isArray(batch)) throw new Error('Unexpected release list');
-        releases.push(...batch);
+        releases.push(...batch.map(githubRelease));
         if (batch.length < 100) return releases;
         if (page >= 1000) throw new Error('Release pagination limit exceeded');
       }
     },
     async tagSha(tag) {
-      const ref = await jsonRequest(
+      const response = await request(
         `${apiBase}/git/ref/tags/${encodeURIComponent(tag)}`,
         undefined,
         true,
       );
-      if (!ref) return null;
-      let object = ref.object;
+      if (!response) return null;
+      let object = gitObject(await response.json());
       for (let depth = 0; depth < 20; depth++) {
         if (object?.type === 'commit' && SHA.test(object.sha)) return object.sha;
         if (object?.type !== 'tag' || !SHA.test(object.sha)) throw new Error('Invalid tag object');
-        object = (await jsonRequest(`${apiBase}/git/tags/${object.sha}`)).object;
+        object = gitObject(await jsonRequest(`${apiBase}/git/tags/${object.sha}`));
       }
       throw new Error('Too many nested annotated tags');
     },
@@ -114,14 +137,14 @@ export async function createRuntime({
         work,
       );
       if (result.code !== 0) {
-        let error;
+        let error: unknown;
         try {
-          error = JSON.parse(result.stdout).error;
+          error = record(JSON.parse(result.stdout), 'npm error').error;
         } catch {}
-        if (error?.code === 'E404') return null;
+        if (isRecord(error) && error.code === 'E404') return null;
         throw new Error(`npm view failed (exit ${result.code}); not treated as unpublished`);
       }
-      const value = JSON.parse(result.stdout);
+      const value = packageMetadata(JSON.parse(result.stdout));
       if (value.name !== name || value.version !== version)
         throw new Error('Unexpected npm version response');
       return value;
@@ -130,7 +153,7 @@ export async function createRuntime({
       const version = await npmRun(['--version'], cwd);
       if (version.code !== 0 || version.stdout.trim() !== '11.21.0')
         throw new Error('Expected npm 11.21.0');
-      const pkg = JSON.parse(await readFile(join(cwd, 'package.json'), 'utf8'));
+      const pkg = packageMetadata(JSON.parse(await readFile(join(cwd, 'package.json'), 'utf8')));
       for (const args of [
         ['ci'],
         ['run', 'lint'],
@@ -143,18 +166,25 @@ export async function createRuntime({
       }
     },
     async cleanup(cwd, source) {
+      if (source === 'registry' && !actionPath) throw new Error('Missing helper action path');
       const cli =
         source === 'local'
           ? join(cwd, 'esm/cli.mjs')
-          : join(actionPath, 'node_modules/@nlib/cleanup-package-json/esm/cli.mjs');
+          : join(actionPath || '', 'node_modules/@nlib/cleanup-package-json/esm/cli.mjs');
       await must(process.execPath, [cli, '--file', join(cwd, 'package.json')]);
     },
     async pack(cwd) {
       const result = await npmRun(['pack', '--json', '--pack-destination', work], cwd);
       if (result.code !== 0)
         throw new Error(`npm pack failed (exit ${result.code}): ${result.stderr.slice(-4000)}`);
-      const metadata = JSON.parse(result.stdout);
-      if (metadata.length !== 1 || !/^[\w.-]+\.tgz$/.test(metadata[0].filename))
+      const metadata: unknown = JSON.parse(result.stdout);
+      if (
+        !Array.isArray(metadata) ||
+        metadata.length !== 1 ||
+        !isRecord(metadata[0]) ||
+        typeof metadata[0].filename !== 'string' ||
+        !/^[\w.-]+\.tgz$/.test(metadata[0].filename)
+      )
         throw new Error('Expected one package tarball');
       const tarball = join(work, metadata[0].filename);
       const inspected = await io.inspectTarball(tarball);
@@ -170,25 +200,30 @@ export async function createRuntime({
         files.some((f) => !f.startsWith('package/') || f.split('/').includes('..'))
       )
         throw new Error('Invalid npm tarball paths');
-      const pkg = JSON.parse(await must('tar', ['-xOf', tarball, 'package/package.json']));
+      const pkg = packageMetadata(
+        JSON.parse(await must('tar', ['-xOf', tarball, 'package/package.json'])),
+      );
       return { pkg, integrity, files };
     },
-    createDraft(tag, sha, body) {
-      return mutate(`${apiBase}/releases`, 'POST', {
-        tag_name: tag,
-        target_commitish: sha,
-        name: tag,
-        body,
-        draft: true,
-        prerelease: false,
-      });
+    async createDraft(tag, sha, body) {
+      return githubRelease(
+        await mutate(`${apiBase}/releases`, 'POST', {
+          tag_name: tag,
+          target_commitish: sha,
+          name: tag,
+          body,
+          draft: true,
+          prerelease: false,
+        }),
+      );
     },
     async upload(release, name, path) {
+      if (!release.upload_url) throw new Error('Missing Release upload URL');
       const endpoint = release.upload_url.replace(/\{.*$/, '');
-      return jsonRequest(`${endpoint}?name=${encodeURIComponent(name)}`, {
+      await jsonRequest(`${endpoint}?name=${encodeURIComponent(name)}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/octet-stream' },
-        body: await readFile(path),
+        body: new Uint8Array(await readFile(path)),
       });
     },
     async uploadText(release, name, text) {
@@ -197,9 +232,11 @@ export async function createRuntime({
       return io.upload(release, name, path);
     },
     async download(asset) {
+      if (!asset.url) throw new Error('Missing asset URL');
       const response = await request(asset.url, {
         headers: { Accept: 'application/octet-stream' },
       });
+      if (!response) throw new Error('Missing asset response');
       const data = Buffer.from(await response.arrayBuffer());
       if (data.length > 64 * 1024 * 1024) throw new Error('Release asset exceeds 64 MiB');
       const path = join(work, `asset-${asset.id}.tgz`);
@@ -225,21 +262,24 @@ export async function createRuntime({
         work,
       );
     },
-    updateBody(release, body) {
-      return mutate(`${apiBase}/releases/${release.id}`, 'PATCH', { body });
+    async updateBody(release, body) {
+      await mutate(`${apiBase}/releases/${release.id}`, 'PATCH', { body });
     },
-    publishDraft(release) {
-      return mutate(`${apiBase}/releases/${release.id}`, 'PATCH', {
-        draft: false,
-        target_commitish: release.target_commitish,
-      });
+    async publishDraft(release) {
+      return githubRelease(
+        await mutate(`${apiBase}/releases/${release.id}`, 'PATCH', {
+          draft: false,
+          target_commitish: release.target_commitish,
+        }),
+      );
     },
     summary(message) {
       console.log(message);
-      if (env.GITHUB_STEP_SUMMARY) {
+      const summaryPath = env.GITHUB_STEP_SUMMARY;
+      if (summaryPath) {
         // Serialise writes in the caller to avoid mixing multiple summaries.
         io.pendingSummary = (io.pendingSummary || Promise.resolve()).then(() =>
-          appendFile(env.GITHUB_STEP_SUMMARY, `${message}\n\n`),
+          appendFile(summaryPath, `${message}\n\n`),
         );
       }
     },
