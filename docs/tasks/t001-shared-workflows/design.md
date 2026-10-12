@@ -24,7 +24,7 @@ A release created with GITHUB_TOKEN does not normally trigger another workflow. 
 
 Callers own Release events, concurrency, deployment environments, and JSR jobs. Pin shared workflows and helper actions to reviewed full SHAs.
 
-The revised npm interface supports read-only Verify and Stage. Verify remains the default manual check. A manual Stage retry identifies an existing published Release by tag and validates its source; it does not publish from an arbitrary branch. Replace Finalize-specific inputs and outputs, including jsr-ready, in the shared workflow and callers together.
+The revised npm interface supports read-only Verify and Stage. Verify remains the default manual check. Manual Stage identifies an existing published Release by tag and requires the selected workflow commit to match its source; it does not publish from an arbitrary branch. Replace Finalize-specific inputs and outputs, including jsr-ready, in the shared workflow and callers together.
 
 Publishing accepts stable, non-draft, non-prerelease Releases belonging to the caller repository. Draft creation, package.json pushes, Release edits, pull requests, and forks do not initiate distribution.
 
@@ -34,7 +34,7 @@ Serialize deployment attempts for the same Release while allowing npm and JSR jo
 
 Create and inspect one npm tarball and stage those exact bytes with provenance. Before submission, persist its expected integrity in a workflow artifact bound to the Release ID, tag, resolved SHA, and package identity. Save the staging result afterward; a stage ID is optional. Retain artifacts for the maximum period allowed by repository policy. The tarball itself is not persisted.
 
-Retries use the saved integrity and staging receipt to verify public npm content or direct the maintainer to pending-version approval. If evidence is missing or expired, report the public registry state and require inspection of npm Staged Packages; never resend. Public absence does not prove that no pending version exists. Release bodies and assets remain unchanged, including for immutable Releases.
+Retries use the saved integrity and staging receipt to verify public npm content or direct the maintainer to pending-version approval. Pre-submission failures can be retried on the same Release tag. If submission started and evidence is missing or expired, report the public registry state and require inspection of npm Staged Packages; never resend. Public absence does not prove that no pending version exists. Release bodies and assets remain unchanged, including for immutable Releases.
 
 | Destination state | Recovery |
 |---|---|

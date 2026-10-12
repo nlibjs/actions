@@ -4,8 +4,8 @@ import { appendFile, mkdtemp, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { githubRelease, gitObject, isRecord, packageMetadata, record } from './json.ts';
-import { REGISTRY, SHA, sourceBranch } from './policy.ts';
-import type { CommandResult, Release, Runtime } from './types.ts';
+import { REGISTRY, SHA } from './policy.ts';
+import type { CommandResult, Evidence, Runtime } from './types.ts';
 
 interface CommandOptions {
   cwd?: string;
@@ -16,7 +16,6 @@ interface RuntimeOptions {
   repository: string;
   actionPath?: string;
   npm?: [string, ...string[]];
-  git?: [string, ...string[]];
   fetcher?: typeof fetch;
   env?: NodeJS.ProcessEnv;
 }
@@ -52,7 +51,6 @@ export async function createRuntime({
   repository,
   actionPath,
   npm = ['npm'],
-  git = ['git'],
   fetcher = fetch,
   env = process.env,
 }: RuntimeOptions): Promise<Runtime> {
@@ -73,15 +71,10 @@ export async function createRuntime({
     'X-GitHub-Api-Version': '2022-11-28',
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
   };
-  const request = async (
-    url: string,
-    init: RequestInit = {},
-    allow404 = false,
-    allowedStatuses: number[] = [],
-  ) => {
+  const request = async (url: string, init: RequestInit = {}, allow404 = false) => {
     const parsed = new URL(url);
     if (
-      !['api.github.com', 'uploads.github.com'].includes(parsed.hostname) ||
+      parsed.hostname !== 'api.github.com' ||
       !parsed.pathname.startsWith(`/repos/${repository}/`)
     )
       throw new Error('Unexpected GitHub API destination');
@@ -91,7 +84,7 @@ export async function createRuntime({
       signal: AbortSignal.timeout(120_000),
     });
     if (response.status === 404 && allow404) return null;
-    if (!response.ok && !allowedStatuses.includes(response.status))
+    if (!response.ok)
       throw new Error(
         `GitHub ${init.method || 'GET'} ${parsed.pathname} failed (${response.status}). Check permissions and target workflow changes; not treated as absence.`,
       );
@@ -105,59 +98,26 @@ export async function createRuntime({
     const response = await request(url, init, allow404);
     return response ? response.json() : null;
   };
-  const mutate = (url: string, method: string, payload: Record<string, unknown>) =>
-    jsonRequest(url, {
-      method,
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    });
-
-  const sourceSha = async (version: string): Promise<string | null> => {
-    const branch = sourceBranch(version);
-    const value = await jsonRequest(`${apiBase}/git/ref/heads/${branch}`, undefined, true);
-    if (value === null) return null;
-    const ref = record(value, 'source reference');
-    const object = gitObject(ref);
-    if (ref.ref !== `refs/heads/${branch}` || object.type !== 'commit' || !SHA.test(object.sha))
-      throw new Error('Invalid source reference');
-    return object.sha;
+  const pages = async (path: string, field: string): Promise<Record<string, unknown>[]> => {
+    const result: Record<string, unknown>[] = [];
+    for (let page = 1; page <= 1000; page++) {
+      const batch = record(
+        await jsonRequest(
+          `${apiBase}/${path}${path.includes('?') ? '&' : '?'}per_page=100&page=${page}`,
+        ),
+        field,
+      )[field];
+      if (!Array.isArray(batch)) throw new Error(`Invalid ${field} list`);
+      result.push(...batch.map((v) => record(v, field)));
+      if (batch.length < 100) return result;
+    }
+    throw new Error('Pagination limit exceeded');
   };
-  const checkSource = (actual: string | null, expected: string) => {
-    if (actual !== expected)
-      throw new Error(
-        'Source branch is missing or points at a different SHA; inspect it before retrying',
-      );
-  };
-
-  const updateRelease = async (release: Release, changes: { body?: string; draft?: boolean }) => {
-    // GitHub can replace an uncreated draft tag with `untagged-*` when a PATCH omits it.
-    const updated = githubRelease(
-      await mutate(`${apiBase}/releases/${release.id}`, 'PATCH', {
-        ...changes,
-        tag_name: release.tag_name,
-        target_commitish: release.target_commitish,
-      }),
-    );
-    if (
-      updated.id !== release.id ||
-      updated.tag_name !== release.tag_name ||
-      updated.target_commitish !== release.target_commitish ||
-      updated.draft !== (changes.draft ?? release.draft)
-    )
-      throw new Error('GitHub Release update changed the saved identity or publication state');
-    return updated;
-  };
-
   const io: Runtime = {
-    async releases() {
-      const releases: Release[] = [];
-      for (let page = 1; ; page++) {
-        const batch = await jsonRequest(`${apiBase}/releases?per_page=100&page=${page}`);
-        if (!Array.isArray(batch)) throw new Error('Unexpected release list');
-        releases.push(...batch.map(githubRelease));
-        if (batch.length < 100) return releases;
-        if (page >= 1000) throw new Error('Release pagination limit exceeded');
-      }
+    async release(tag) {
+      return githubRelease(
+        await jsonRequest(`${apiBase}/releases/tags/${encodeURIComponent(tag)}`),
+      );
     },
     async tagSha(tag) {
       const response = await request(
@@ -168,79 +128,73 @@ export async function createRuntime({
       if (!response) return null;
       let object = gitObject(await response.json());
       for (let depth = 0; depth < 20; depth++) {
-        if (object?.type === 'commit' && SHA.test(object.sha)) return object.sha;
-        if (object?.type !== 'tag' || !SHA.test(object.sha)) throw new Error('Invalid tag object');
+        if (object.type === 'commit' && SHA.test(object.sha)) return object.sha;
+        if (object.type !== 'tag' || !SHA.test(object.sha)) throw new Error('Invalid tag object');
         object = gitObject(await jsonRequest(`${apiBase}/git/tags/${object.sha}`));
       }
       throw new Error('Too many nested annotated tags');
     },
-    async retainSource(version, sha) {
-      if (!SHA.test(sha)) throw new Error('Invalid source SHA');
-      const existing = await sourceSha(version);
-      if (existing !== null) {
-        checkSource(existing, sha);
-        return;
+    async submissionStarted(tag) {
+      const runs = await pages('actions/workflows/release.yml/runs', 'workflow_runs');
+      for (const run of runs.filter((r) =>
+        ['release', 'workflow_dispatch'].includes(String(r.event)),
+      )) {
+        const jobs = await pages(`actions/runs/${run.id}/jobs?filter=all`, 'jobs');
+        for (const job of jobs) {
+          if (
+            String(run.id) === env.GITHUB_RUN_ID &&
+            String(job.run_attempt) === env.GITHUB_RUN_ATTEMPT
+          )
+            continue;
+          if (job.name !== `Stage ${tag}` && !String(job.name).endsWith(` / Stage ${tag}`))
+            continue;
+          if (!Array.isArray(job.steps))
+            throw new Error('Missing submission step history; inspect npm');
+          if (
+            job.steps.some((value) => {
+              const step = record(value, 'job step');
+              return (
+                step.name === 'Submit npm tarball' &&
+                step.conclusion !== 'skipped' &&
+                step.status !== 'queued'
+              );
+            })
+          )
+            return true;
+        }
       }
-      const response = await request(
-        `${apiBase}/git/refs`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ ref: `refs/heads/${sourceBranch(version)}`, sha }),
-        },
-        false,
-        [422],
-      );
-      if (!response) throw new Error('Missing source reference response');
-      if (response.status !== 422) {
-        const created = record(await response.json(), 'source reference');
-        const object = gitObject(created);
-        if (created.ref !== `refs/heads/${sourceBranch(version)}` || object.type !== 'commit')
-          throw new Error('Invalid created source reference');
-        checkSource(object.sha, sha);
-      }
-      // A concurrent creator may return 422; only the exact saved SHA is acceptable.
-      checkSource(await sourceSha(version), sha);
+      return false;
     },
-    async removeSource(version, sha) {
-      if (!SHA.test(sha)) throw new Error('Invalid source SHA');
-      const existing = await sourceSha(version);
-      if (existing === null) return;
-      checkSource(existing, sha);
-      if (!token) throw new Error('Source branch cleanup requires GitHub authentication');
-      const count = Number(env.GIT_CONFIG_COUNT || '0');
-      if (!Number.isSafeInteger(count) || count < 0)
-        throw new Error('Invalid Git configuration count');
-      const gitDir = join(work, 'source-cleanup.git');
-      await must(git[0], [...git.slice(1), 'init', '--bare', gitDir]);
-      const ref = `refs/heads/${sourceBranch(version)}`;
-      const result = await command(
-        git[0],
-        [
-          ...git.slice(1),
-          '-C',
-          gitDir,
-          'push',
-          `--force-with-lease=${ref}:${sha}`,
-          `https://github.com/${repository}.git`,
-          `:${ref}`,
-        ],
-        {
-          env: {
-            ...env,
-            GIT_TERMINAL_PROMPT: '0',
-            GIT_CONFIG_COUNT: String(count + 1),
-            [`GIT_CONFIG_KEY_${count}`]: 'http.https://github.com/.extraheader',
-            [`GIT_CONFIG_VALUE_${count}`]: `AUTHORIZATION: basic ${Buffer.from(`x-access-token:${token}`).toString('base64')}`,
-          },
-        },
-      );
-      if (result.code !== 0)
-        throw new Error(
-          'Source branch cleanup failed after release/tag verification; inspect permissions or a moved branch, then retry finalize',
+    async evidence(tag) {
+      const artifacts = await pages('actions/artifacts', 'artifacts');
+      const result: Evidence[] = [];
+      for (const artifact of artifacts.filter(
+        (a) => typeof a.name === 'string' && a.name.startsWith(`npm-${tag}-`),
+      )) {
+        const run = record(artifact.workflow_run, 'artifact run');
+        if (!Number.isSafeInteger(run.id) || !Number.isSafeInteger(artifact.id))
+          throw new Error('Invalid artifact identity');
+        const origin = record(
+          await jsonRequest(`${apiBase}/actions/runs/${run.id}`),
+          'artifact origin',
         );
-      if ((await sourceSha(version)) !== null)
-        throw new Error('Source branch still exists after cleanup; inspect it before retrying');
+        if (!['release', 'workflow_dispatch'].includes(String(origin.event))) continue;
+        if (String(origin.path).split('@')[0] !== '.github/workflows/release.yml') continue;
+        if (artifact.expired !== false)
+          throw new Error('Staging evidence expired; inspect npm without resending');
+        const response = await request(`${apiBase}/actions/artifacts/${artifact.id}/zip`);
+        if (!response) throw new Error('Missing staging evidence');
+        const bytes = new Uint8Array(await response.arrayBuffer());
+        if (bytes.length > 65536 || Number(artifact.size_in_bytes) > 65536)
+          throw new Error('Oversized evidence');
+        const zip = join(work, 'evidence.zip');
+        await writeFile(zip, bytes);
+        if ((await must('unzip', ['-Z1', zip])).trim() !== 'evidence.json')
+          throw new Error('Invalid evidence archive');
+        const value = JSON.parse(await must('unzip', ['-p', zip, 'evidence.json']));
+        result.push(value);
+      }
+      return result;
     },
     async published(name, version) {
       const result = await npmRun(
@@ -316,47 +270,6 @@ export async function createRuntime({
       );
       return { pkg, integrity, files };
     },
-    async createDraft(tag, sha, body) {
-      return githubRelease(
-        await mutate(`${apiBase}/releases`, 'POST', {
-          tag_name: tag,
-          target_commitish: sha,
-          name: tag,
-          body,
-          draft: true,
-          prerelease: false,
-        }),
-      );
-    },
-    async upload(release, name, path) {
-      if (!release.upload_url) throw new Error('Missing Release upload URL');
-      const endpoint = release.upload_url.replace(/\{.*$/, '');
-      await jsonRequest(`${endpoint}?name=${encodeURIComponent(name)}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/octet-stream' },
-        body: new Uint8Array(await readFile(path)),
-      });
-    },
-    async uploadText(release, name, text) {
-      const path = join(work, name);
-      await writeFile(path, text);
-      return io.upload(release, name, path);
-    },
-    async download(asset) {
-      if (!asset.url) throw new Error('Missing asset URL');
-      const response = await request(asset.url, {
-        headers: { Accept: 'application/octet-stream' },
-      });
-      if (!response) throw new Error('Missing asset response');
-      const data = Buffer.from(await response.arrayBuffer());
-      if (data.length > 64 * 1024 * 1024) throw new Error('Release asset exceeds 64 MiB');
-      const path = join(work, `asset-${asset.id}.tgz`);
-      await writeFile(path, data);
-      return path;
-    },
-    async downloadText(asset) {
-      return readFile(await io.download(asset), 'utf8');
-    },
     async stage(tarball) {
       // The package-spec is the saved tarball. A temporary cwd avoids caller .npmrc redirects.
       return npmRun(
@@ -372,12 +285,6 @@ export async function createRuntime({
         ],
         work,
       );
-    },
-    async updateBody(release, body) {
-      await updateRelease(release, { body });
-    },
-    async publishDraft(release) {
-      return updateRelease(release, { draft: false });
     },
     summary(message) {
       console.log(message);

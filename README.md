@@ -1,98 +1,88 @@
-# nlibjs actions
+# Shared release workflows
 
-Shared GitHub Actions for public npm package releases. Repositories in nlibjs and personal accounts can call the reusable workflow at a pinned commit SHA.
-
-The workflow manages Node 26.x, npm 11.21.0, and cleanup-package-json 0.5.0. It separates npm staging from GitHub Release publication. JSR publication remains a separate job in the caller.
+Use this public repository to verify and stage npm packages from a published GitHub Release. Callers can publish to JSR in parallel. Release tooling uses Node 26.x, npm 11.21.0, and cleanup-package-json 0.5.0.
 
 ## Usage
 
-Call the workflow from the consumer repository's `.github/workflows/release.yml`. Pin it to a reviewed full commit SHA from this repository.
+Copy the appropriate [caller example](examples/README.md) into `.github/workflows/release.yml` and replace its SHA placeholders with reviewed commits. Publishing starts on `release: published`; package.json changes alone do not publish.
 
 ```yaml
-jobs:
-  Stage:
-    permissions:
-      contents: write
-      id-token: write
-    uses: nlibjs/actions/.github/workflows/npm-release.yml@REPLACE_WITH_REVIEWED_SHA
-    with:
-      action: stage
+Stage:
+  permissions:
+    contents: read
+    actions: read
+    id-token: write
+  uses: nlibjs/actions/.github/workflows/npm-release.yml@REPLACE_WITH_COMMON_WORKFLOW_SHA
+  with:
+    action: stage
+    tag: ${{ github.event.release.tag_name || inputs.tag }}
 ```
-
-[Examples](examples/README.md) cover the five nlibjs repositories and a personal repository. Replace their workflow SHA placeholders with a reviewed, merged version. The JSR examples require a `release:jsr` script in the caller; this repository does not add that script automatically.
 
 ## Inputs and outputs
 
-| Input | Default | Description |
+| Input | Default | Meaning |
 |---|---|---|
-| action | verify | verify / stage / finalize |
-| version | Empty | Required only for finalize; a stable semver without a v prefix |
-| environment | Empty | An environment such as deployment; applies its protection rules |
-| cleanup-source | registry | registry / local; local uses cleanup-package-json's own built CLI |
+| action | verify | verify or stage |
+| tag | Empty | Published stable Release tag for stage, e.g. v1.2.3 |
+| environment | Empty | Optional deployment environment for Stage |
+| cleanup-source | registry | registry or local; local is restricted to cleanup-package-json self-release |
+| source-sha | Empty | Optional expected Release commit, shared with a parallel JSR job |
 
-Outputs are package-name, version, tag, source-sha, npm-state, github-state, jsr-ready, and release-url. A successful finalize returns jsr-ready=true even when the GitHub Release is already published, allowing JSR to be retried.
+Outputs are package-name, version, tag, source-sha, npm-state, and release-url. Verify reports npm-state=unknown without registry or Release lookups. Stage reports staged or published when evidence confirms that state.
 
-action, version, and cleanup-source are validated before execution. Inputs are not interpolated directly into shell code. stage and finalize accept only a main push or a workflow_dispatch on main. verify also supports pull requests.
+The helper action also supports phase=resolve to resolve a Release tag for parallel jobs. The JSR examples use its source-sha for both destinations; JSR does not depend on npm Stage.
 
 ## Requirements
 
-- package.json describes a public npm package with a stable version, and its repository matches the caller's GitHub repository.
-- A lockfile and lint/test/build npm scripts exist. If additional preparation is needed, provide `release:prepare` and include the build in that script.
-- CHANGELOG.md has a nonempty section for the version, headed by `## v1.2.3 (date)`.
-- Private packages, authentication for private dependencies, monorepos, prereleases, other registries, and custom dist-tags are outside the initial scope.
-- The caller's Actions settings permit this public reusable workflow.
+- A public npm package with a stable version, matching GitHub repository, and a lockfile.
+- npm scripts lint, test, and build. Optional release:prepare replaces build and must include it.
+- A nonempty CHANGELOG.md section headed by `## v1.2.3 (date)`.
+- Caller Actions settings permitting pinned shared workflows and actions.
+- npm Trusted Publisher configured for the caller owner/repository/release.yml/environment.
+- Artifact retention configured to the maximum period permitted by repository policy. Uploads use that repository default; public repositories allow up to 90 days.
 
-Repositories using Biome pin it in devDependencies and the lockfile. ESLint/Prettier repositories also work through the `npm run lint` contract. Using Node 26.x for releases does not change the minimum Node version supported by consumers or the compatibility CI matrix.
+Release tooling does not change consumer Node support or compatibility CI. Private packages, private dependency authentication, prereleases, monorepos, custom dist-tags, and other registries require separate support.
 
 ## Release procedure
 
-1. A package.json change on main or a manual stage starts release verification. Checkout includes the full history.
-2. Retain the source SHA in `release-source/v<version>` before lint/test/build. Perform mandatory cleanup, create one tarball, and save the tarball and integrity on a draft Release. Confirm the source branch before sending that tarball to npm.
-3. Treat exit code 0 from `npm stage publish` as success. A stage ID is optional diagnostic information; failure to extract it does not fail staging.
-4. A maintainer approves the version with 2FA in npmjs.com's Staged Packages page.
-5. Run the caller's Release workflow on main with action=finalize and version set to the approved version.
-6. Verify npm dist.integrity against the saved tarball, publish the draft, and check the version tag against the fixed SHA. Delete the matching source branch, then run JSR if configured.
+1. Prepare and merge the version and CHANGELOG update through the package's normal process.
+2. On GitHub, create a stable Release with tag `v<package.json version>` at that commit. Copy the matching CHANGELOG section into the notes and publish it.
+3. The workflow checks the published Release and tag, runs lint/tests/build, cleans the npm manifest, and inspects one tarball. Before submission it saves the expected integrity as a workflow artifact, then stages those exact bytes with provenance and saves the result.
+4. Approve the exact package/version in npmjs.com → Staged Packages using maintainer 2FA.
 
-Release runners need Git for conditional source-branch cleanup. An Actions run does not wait across the approval period. finalize uses the draft's fixed SHA and tarball rather than rebuilding the latest main. The draft body and step summary include the approval and finalize instructions.
+JSR callers publish the same source independently while npm awaits approval. GitHub Release and JSR can therefore be available before npm. No Finalize operation follows approval.
 
-The `release-source/v<version>` namespace is reserved for temporary release refs. An existing ref is reused only at the exact source SHA; conflicts stop staging. Stage failures retain the ref for recovery. Finalize uses a Git lease to delete only the saved SHA, so a concurrently moved branch is retained. Cleanup failures can be retried through Finalize after publication. Older releases with no source branch remain supported.
+A GITHUB_TOKEN-created Release normally does not trigger another workflow. Publish through the GitHub UI or a triggering actor/token; automation using GITHUB_TOKEN must explicitly invoke deployment. The source commit must contain the Release-triggered caller before its Release is published.
 
 ## Existing versions and failures
 
-| State | Behavior |
+Evidence artifacts contain only package identity, Release ID, tag, commit, integrity, and staging result. They contain no tarball. Release bodies, assets, tags, and branches are never modified.
+
+| State | Next step |
 |---|---|
-| npm version is public and its version tag exists | stage succeeds as a no-op; dependency-only updates do not fail |
-| A draft exists with a successful staging receipt or a matching published npm version | Succeed without re-staging; direct the maintainer to approval or finalize |
-| A draft exists without a successful receipt and npm is not public | Fail with an unknown outcome; retain the draft and never re-stage automatically |
-| No draft exists, and only npm or the tag exists | Stop with an inconsistency |
-| Drafts or assets are duplicated or incomplete | Stop and identify the candidates or missing assets |
-| Staging exits nonzero and its outcome is unknown | Retain the draft; do not resend until a maintainer checks npm |
-| Staging exits 0 but updating the body fails | Record npm success in the summary; do not resend while the draft exists |
-| GitHub or JSR fails | Re-run finalize for the same version when npm and the saved integrity match |
-| A pending run is replaced and stage never runs | Confirm the target version is on main, then run stage manually |
-| A failed attempt leaves only a source branch; no draft, pending/public npm version, or version tag exists | After a maintainer confirms those states and the recorded source SHA, manually delete `release-source/v<version>` and run stage on current main |
+| npm stage succeeded; approval pending | Approve in npmjs.com; retries do not resend |
+| npm is public | Stage retry verifies saved integrity and succeeds without rebuilding |
+| Submission failed or its outcome is unknown | Inspect npm Staged Packages and public npm; retries stop without resending |
+| Preparation failed before submission | Re-run Stage on the same Release tag |
+| Evidence is missing after submission started, or expired | Inspect registry state; retries stop without resending |
+| JSR failed | Re-run its failed job; it verifies existing content or publishes an absent version |
+| Tag moved, evidence conflicts, or a lookup fails | Investigate the affected destination; no automatic repair |
 
-finalize also inspects published Releases, but does not automatically modify historical Releases without the new assets. Resolve existing tags to their commit SHA. Let GitHub create a missing tag when publishing the draft, then verify its SHA afterward.
+For manual Stage, select the published Release tag in **Run workflow**, choose action=stage, and enter the same tag. The selected commit must match the Release source so npm provenance identifies the built commit. Manual dispatch can deploy a Release whose event did not trigger, including one created with GITHUB_TOKEN.
 
-After a failed stage, inspect npm Staged Packages and the public registry for the exact package/version. If a pending version exists, approve it and run finalize; if a public version exists, run finalize to verify it against the saved tarball. An unconfirmed draft keeps subsequent stage runs failing until the published version can be verified. This also applies if staging succeeded but saving its receipt failed.
+Preparation can be retried after lint, tests, build, pack, or evidence upload fails. Before preparing again, inspect prior attempts of the version's named Stage job. If its separate **Submit npm tarball** step started, missing evidence cannot authorize another submission. A successful receipt or matching public integrity allows verification without resending; an unknown outcome requires npm Staged Packages inspection. Keep workflow history and evidence during recovery. Lookup failures stop publishing.
 
-Only after a maintainer confirms that neither a pending nor a public version exists may they reset a definitively failed attempt (for example, a rejected Trusted Publisher configuration). Record the error and source SHA, save any draft assets for diagnosis, fix the cause, then manually delete that draft and its matching temporary source branch before running stage again. A failed build can leave a source branch without a draft. The new attempt rebuilds current main; verify its version and changes against the recorded SHA. If npm's state is uncertain, retain the draft and source branch for investigation.
-
-Find drafts by paging through the authenticated release list. Stop if multiple Releases share the tag; do not choose the newest automatically. Release state consists of tag_name/target_commitish, package.tgz, package.integrity, and the temporary source branch. There is no custom record schema or stage-ID-dependent automatic recovery.
-
-A Release operation returning 403/404 is not proof of absence. When the saved commit's workflow files differ from the default branch and no branch or tag points directly to that SHA, [GitHub requires workflow modification permission](https://github.blog/changelog/2023-11-02-github-actions-enforcing-workflow-scope-when-creating-a-release/). Automatic source retention keeps a ref throughout npm approval. An already-outdated queued Stage run can still encounter a permission failure while creating its ref. For older drafts or creation failures, a maintainer can verify the saved SHA and assets, retain that SHA with a temporary source branch, and retry the failed operation. See the [changelog pilot recovery](docs/tasks/t005-changelog-pilot/verification.md).
+JSR uses the same resolved source and runs independently. Re-run its failed job to recover only JSR. A manual Stage also checks JSR in configured callers; matching existing JSR content is a no-op.
 
 ## Authentication and permissions
 
-Register the **caller repository's owner/repository, release.yml, and environment** as the npm Trusted Publisher. Do not register this shared repository as the publishing source. The Stage caller grants id-token: write, which the selected shared stage job inherits.
+Verify and source resolution use contents: read. Stage uses contents: read, actions: read for evidence retrieval, and id-token: write for npm Trusted Publishing. GitHub-hosted runners are required. No npm token or inherited secrets are needed for public publishing.
 
-Set permissions on each caller job explicitly: verify uses contents: read; stage uses contents: write and id-token: write; finalize uses contents: write. The shared ValidateInputs and Verify jobs explicitly reduce permissions to contents: read. Publishing jobs inherit the caller job's permissions, so they request no higher permission ceiling during workflow validation. GitHub checks skipped jobs too: declaring fixed write permissions on a stage/finalize job would reject a read-only verify caller before any job starts. Each environment-protected operation uses one job, so adding required reviewers results in one approval per stage or finalize operation. An empty environment selects jobs without an environment.
+The shared Stage jobs inherit caller permissions; Verify explicitly reduces them. GitHub checks skipped nested jobs too, so publishing jobs must not request writes from a read-only Verify caller. A configured environment protects one Stage job; an empty setting creates no environment. Lint-commit and cleanup-package-json retain deployment to match their Trusted Publisher configuration.
 
-No npm token or secrets: inherit is required. Keep secrets in the caller and pass individual secrets explicitly when another purpose requires them. Runners and GITHUB_TOKEN belong to the caller. Caller source code and secrets are not stored in this public shared repository.
+Use a caller concurrency group containing the Release tag, with cancel-in-progress=false. npm and JSR run in parallel within that group. Deploy different versions in separate groups so pending releases cannot replace one another.
 
 ## Development and validation
-
-Use Node 26.x and npm 11.21.0.
 
 ```sh
 npm ci --ignore-scripts
@@ -103,26 +93,12 @@ npm test
 npm run check
 ```
 
-The helper, tests, and workflow checks use `.ts` ES modules with explicit import extensions. Node 26 executes them directly using built-in type stripping; no generated JavaScript, bundler, or runtime loader is needed. Type stripping does not check types: run `npm run typecheck` separately. The pinned TypeScript and Node type dependencies are development-only, and validation CI runs `tsc --noEmit` with strict checking, unchecked-index checking, and `erasableSyntaxOnly`. Use only erasable syntax (no enums or parameter properties).
+Use Node 26.x and npm 11.21.0. Tests use fixtures and a local dry-run registry; they do not publish packages. Workflow checks cover action pins, permissions, and parallel caller sources. Run actionlint on the workflows and examples as well.
 
-Tests include a dry-run against a local fixture registry that rejects writes. They do not publish to the real registry. CI runs the same fixtures and checks workflow contracts, permissions, and pinned action SHAs.
+## Updating and migration
 
-Validate real OIDC authentication and provenance signing during the pilot repository's normal release. [R2 verification results](docs/tasks/t001-shared-workflows/verification.md) describe the verified scope.
+Commit helper changes first, then commit the workflow referencing that full helper SHA. Validate the workflow commit and update callers through separate reviewed PRs. Keep both commits in shared main history.
 
-## Updating the shared implementation
+Before migration, complete or explicitly recover existing pending versions and drafts using their old pinned Stage/Finalize implementation. Replace package.json-triggered staging and Finalize callers together. Existing caller pins continue to use their original implementation.
 
-Pin the helper action to a full commit SHA inside the workflow. Update it in two steps:
-
-1. Commit the helper action change as commit A.
-2. Create commit B that pins the workflow's helper reference to A, and validate the combination.
-3. Open caller PRs updating their shared workflow reference to B.
-
-Merge this implementation PR and subsequent helper updates using **Create a merge commit**. Do not squash or rebase: the workflow pins the original helper commit A, which must remain in main's history. Before updating callers, verify that A is an ancestor of main and that the chosen workflow commit pins A. If repository policy requires squash or rebase, first merge the helper change, then create a separate workflow update pinned to the resulting main commit and review it before caller adoption.
-
-If needed, revert a caller's reference to an earlier SHA. Do not roll back published versions; recover only the failed publishing destination.
-
-## Design and rollout
-
-See the [approved design](docs/tasks/t001-shared-workflows/design.md), [implementation and review plan](docs/tasks/t001-shared-workflows/plan.md), and [task record](docs/tasks/t001-shared-workflows/record.md). Codex implements and validates, Claude performs technical review, and the user makes final approval and merge decisions and approves npm with 2FA. Evaluate scheduled finalize and additional records after the pilot release.
-
-Documentation, commits, pull requests, and review comments written for nlibjs use English.
+The [design](docs/tasks/t001-shared-workflows/design.md), [plan](docs/tasks/t001-shared-workflows/plan.md), and [historical record](docs/tasks/t001-shared-workflows/record.md) describe rollout. Pilot the new lifecycle in changelog, migrate existing npm-only callers individually, then adopt typing/negotiate with JSR. Keep package-specific settings in workflow comments.

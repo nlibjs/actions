@@ -1,4 +1,4 @@
-import type { GitObject, PackageMetadata, Release, ReleaseAsset } from './types.ts';
+import type { GitObject, PackageMetadata, Release } from './types.ts';
 
 export function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -67,29 +67,16 @@ export function packageMetadata(value: unknown): PackageMetadata {
   return result;
 }
 
-export function releaseAsset(value: unknown): ReleaseAsset {
-  const asset = record(value, 'Release asset');
-  return {
-    id: id(asset.id),
-    name: string(asset.name, 'asset name'),
-    state: string(asset.state, 'asset state'),
-    url: optionalString(asset.url, 'asset URL'),
-  };
-}
-
 export function githubRelease(value: unknown): Release {
   const release = record(value, 'GitHub Release');
-  if (typeof release.draft !== 'boolean') throw new Error('Invalid Release draft flag');
-  if (!Array.isArray(release.assets)) throw new Error('Invalid Release assets');
+  if (typeof release.draft !== 'boolean' || typeof release.prerelease !== 'boolean')
+    throw new Error('Invalid Release publication flags');
   return {
     id: id(release.id),
     tag_name: string(release.tag_name, 'Release tag'),
-    target_commitish: string(release.target_commitish, 'Release target'),
     draft: release.draft,
+    prerelease: release.prerelease,
     html_url: string(release.html_url, 'Release URL'),
-    assets: release.assets.map(releaseAsset),
-    body: release.body === null ? null : optionalString(release.body, 'Release body'),
-    upload_url: optionalString(release.upload_url, 'Release upload URL'),
   };
 }
 

@@ -19,7 +19,7 @@ Codex prepares implementations, verification, and review fixes. Claude performs 
 
 ## Next implementation work
 
-1. Persist expected integrity before submission and the staging result afterward as workflow artifacts with maximum permitted retention. Missing or expired evidence reports registry state without resending; uncertain pending state requires maintainer inspection.
+1. Persist expected integrity before submission and the staging result afterward as workflow artifacts with maximum permitted retention. Allow pre-submission retries. Missing or expired evidence after a started submission reports registry state without resending; uncertain pending state requires maintainer inspection.
 2. Implement `release: published` source validation and tag-based manual retries. Preserve read-only Verify and remove Finalize from the new interface.
 3. Remove draft/Release publication and temporary source-ref management from the new path. Keep historical pinned implementations usable for existing pending attempts.
 4. Run npm Stage and caller JSR jobs in parallel from the same resolved tag SHA. Validate registry metadata and existing content independently.

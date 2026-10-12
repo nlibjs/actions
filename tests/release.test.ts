@@ -1,477 +1,272 @@
 import assert from 'node:assert/strict';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { join } from 'node:path';
 import type { TestContext } from 'node:test';
 import test from 'node:test';
-import {
-  changelogNotes,
-  selectRelease,
-  validateInputs,
-} from '../actions/npm-release/src/policy.ts';
-import { runRelease } from '../actions/npm-release/src/release.ts';
-import { createRuntime } from '../actions/npm-release/src/runtime.ts';
-import type {
-  PackageMetadata,
-  RawInputs,
-  Release,
-  Runtime,
-} from '../actions/npm-release/src/types.ts';
+import { validateInputs } from '../actions/npm-release/src/policy.ts';
+import { resolveSource, runRelease, submit } from '../actions/npm-release/src/release.ts';
+import type { Evidence, RawInputs, Runtime } from '../actions/npm-release/src/types.ts';
 
-const sha = 'a'.repeat(40);
-const repository = 'example/widget';
-const pkg: PackageMetadata = {
+const sha = 'a'.repeat(40),
+  repository = 'example/widget',
+  tag = 'v1.2.3';
+const integrity = `sha512-${Buffer.alloc(64).toString('base64')}`;
+const pkg = {
   name: '@example/widget',
   version: '1.2.3',
   repository: `https://github.com/${repository}`,
-  publishConfig: { access: 'public' },
   exports: { '.': './index.js' },
-  types: './index.d.ts',
-  sideEffects: false,
   devDependencies: { tool: '1.0.0' },
-  renovate: {},
 };
-const input: RawInputs = {
-  cwd: process.cwd(),
-  action: 'stage',
-  version: '',
-  cleanup: 'registry',
-  repository,
-  sha,
-  ref: 'refs/heads/main',
-  event: 'push',
-};
-const integrity = 'sha512-test';
-const draft: Release = {
+const release = {
   id: 1,
-  tag_name: 'v1.2.3',
-  target_commitish: sha,
-  draft: true,
-  html_url: 'https://github.com/example/widget/releases/1',
-  assets: [
-    { id: 10, name: 'package.tgz', state: 'uploaded' },
-    { id: 11, name: 'package.integrity', state: 'uploaded' },
-  ],
+  tag_name: tag,
+  draft: false,
+  prerelease: false,
+  html_url: `https://github.com/${repository}/releases/tag/${tag}`,
 };
-const cleaned: PackageMetadata = {
+const expected: Evidence = {
+  repository,
+  release: 1,
+  tag,
+  sha,
   name: pkg.name,
   version: pkg.version,
-  ...Object.fromEntries(
-    Object.entries(pkg).filter(([k]) => !['devDependencies', 'renovate'].includes(k)),
-  ),
+  integrity,
+  state: 'prepared',
 };
-
 async function fixture(t: TestContext, overrides: Partial<Runtime> = {}) {
   const cwd = await mkdtemp(join(tmpdir(), 'release-test-'));
   t.after(() => rm(cwd, { recursive: true, force: true }));
   await writeFile(join(cwd, 'package.json'), JSON.stringify(pkg));
-  await writeFile(
-    join(cwd, 'CHANGELOG.md'),
-    '# Changelog\n\n## v1.2.3 (2026-10-12)\n\nUseful change.\n\n## v1.2.2 (2026-01-01)\n\nOlder.\n',
-  );
-  const calls: string[] = [],
-    summaries: string[] = [];
-  let releaseList: Release[] = [];
+  await writeFile(join(cwd, 'CHANGELOG.md'), `## ${tag} (2026-10-12)\n\nUseful change.\n`);
+  const calls: string[] = [];
+  const packed = {
+    pkg: { ...pkg, devDependencies: undefined },
+    integrity,
+    tarball: '/package.tgz',
+    files: ['package/package.json'],
+  };
   const io: Runtime = {
-    releases: async () => releaseList,
+    release: async () => release,
+    tagSha: async () => sha,
     published: async () => null,
-    tagSha: async () => null,
-    retainSource: async () => {
-      calls.push('retain-source');
-    },
-    removeSource: async () => {
-      calls.push('remove-source');
-    },
+    evidence: async () => [],
+    submissionStarted: async () => false,
     prepare: async () => {
       calls.push('prepare');
     },
     cleanup: async () => {
       calls.push('cleanup');
     },
-    pack: async () => ({
-      pkg: cleaned,
-      integrity,
-      tarball: '/saved/package.tgz',
-      files: ['package/package.json'],
-    }),
-    createDraft: async (_tag, _sha, body) => {
-      calls.push('draft');
-      const created = { ...draft, body };
-      releaseList = [created];
-      return created;
-    },
-    upload: async () => {
-      calls.push('tarball');
-    },
-    uploadText: async () => {
-      calls.push('integrity');
-    },
-    download: async () => '/saved/package.tgz',
-    downloadText: async () => `${integrity}\n`,
-    inspectTarball: async () => ({ pkg: cleaned, integrity, files: ['package/package.json'] }),
+    pack: async () => packed,
+    inspectTarball: async () => packed,
     stage: async () => {
       calls.push('stage');
-      return { code: 0, stdout: 'unrecognised successful output' };
+      return { code: 0, stdout: '{}' };
     },
-    updateBody: async () => {
-      calls.push('receipt');
-    },
-    publishDraft: async (release) => {
-      calls.push('publish');
-      return { ...release, draft: false };
-    },
-    summary: (message) => summaries.push(message),
+    summary: () => {},
     ...overrides,
   };
-  return { input: { ...input, cwd }, io, calls, summaries };
+  const input: RawInputs = { cwd, action: 'stage', tag, sha, repository, event: 'release' };
+  const path = join(cwd, 'evidence.json');
+  return { input, io, calls, path };
 }
 
-test('legacy published version and tag are a successful no-op after a dependency-only change', async (t) => {
+test('Verify uses no registry, Release, artifact or submission methods', async (t) => {
+  const forbidden = async (): Promise<never> => {
+    throw new Error('Unexpected release access');
+  };
   const f = await fixture(t, {
-    published: async () => cleaned,
-    tagSha: async () => 'b'.repeat(40),
+    release: forbidden,
+    tagSha: forbidden,
+    published: forbidden,
+    evidence: forbidden,
+    submissionStarted: forbidden,
+    stage: forbidden,
   });
-  const result = await runRelease(f.input, f.io);
-  assert.equal(result['npm-state'], 'published');
-  assert.equal(result['jsr-ready'], 'false');
-  assert.deepEqual(f.calls, []);
-  assert.match(f.summaries[0] || '', /No-op/);
-});
-
-for (const [name, overrides] of [
-  ['tag without npm', { tagSha: async () => sha }],
-  ['npm without tag', { published: async () => cleaned }],
-  ['duplicate drafts', { releases: async () => [draft, { ...draft, id: 2 }] }],
-  [
-    'registry outage',
-    {
-      published: async () => {
-        throw new Error('outage');
-      },
-    },
-  ],
-] satisfies [string, Partial<Runtime>][]) {
-  test(`${name} cannot trigger a new stage`, async (t) => {
-    const f = await fixture(t, overrides);
-    await assert.rejects(runRelease(f.input, f.io));
-    assert.deepEqual(f.calls, []);
-  });
-}
-
-test('exit 0 is success even without a parseable stage ID; assets precede staging', async (t) => {
-  const f = await fixture(t);
-  const result = await runRelease(f.input, f.io);
-  assert.equal(result['npm-state'], 'staged');
-  assert.deepEqual(f.calls, [
-    'retain-source',
-    'prepare',
-    'cleanup',
-    'draft',
-    'tarball',
-    'integrity',
-    'retain-source',
-    'stage',
-    'receipt',
-  ]);
-  assert.match(f.summaries.join('\n'), /Stage ID was not extracted/);
-});
-
-test('nonzero staging preserves the draft and never finalizes', async (t) => {
-  const f = await fixture(t, { stage: async () => ({ code: 1, stdout: '' }) });
-  await assert.rejects(runRelease(f.input, f.io), /unknown/);
-  assert.ok(f.calls.includes('draft'));
-  assert.ok(!f.calls.includes('publish'));
-  assert.ok(!f.calls.includes('remove-source'));
-});
-
-test('source retention failure stops before preparation or staging', async (t) => {
-  const f = await fixture(t, {
-    retainSource: async () => {
-      throw new Error('source conflict');
-    },
-  });
-  await assert.rejects(runRelease(f.input, f.io), /source conflict/);
-  assert.deepEqual(f.calls, []);
-});
-
-test('source retention is checked again after the build before npm receives the package', async (t) => {
-  let checks = 0;
-  const f = await fixture(t, {
-    retainSource: async (_version, source) => {
-      assert.equal(source, sha);
-      if (++checks === 2) throw new Error('source moved during build');
-    },
-  });
-  await assert.rejects(runRelease(f.input, f.io), /source moved/);
-  assert.ok(f.calls.includes('integrity'));
-  assert.ok(!f.calls.includes('stage'));
-  assert.ok(!f.calls.includes('remove-source'));
-});
-
-test('successful npm stage followed by receipt failure remains visibly successful on npm', async (t) => {
-  const f = await fixture(t, {
-    updateBody: async () => {
-      throw new Error('GitHub receipt failure');
-    },
-  });
-  await assert.rejects(runRelease(f.input, f.io), /receipt failure/);
-  assert.match(f.summaries.join('\n'), /npm staging succeeded/);
-  await assert.rejects(runRelease(f.input, f.io), /unknown/);
-  assert.equal(f.calls.filter((c) => c === 'stage').length, 1);
-  assert.ok(!f.calls.includes('remove-source'));
-});
-
-test('an existing draft is never sent again', async (t) => {
-  const f = await fixture(t, {
-    releases: async () => [{ ...draft, body: '\n\nStaging succeeded.' }],
-  });
-  const result = await runRelease(f.input, f.io);
-  assert.equal(result['source-sha'], sha);
-  assert.deepEqual(f.calls, []);
-});
-
-test('an unconfirmed draft fails retries without resending', async (t) => {
-  const f = await fixture(t, { releases: async () => [draft] });
-  await assert.rejects(runRelease(f.input, f.io), /unknown/);
-  assert.deepEqual(f.calls, []);
-});
-
-test('missing draft asset stops a retry', async (t) => {
-  const f = await fixture(t, { releases: async () => [{ ...draft, assets: [] }] });
-  await assert.rejects(runRelease(f.input, f.io), /missing assets/);
-  assert.deepEqual(f.calls, []);
-});
-
-test('asset upload failure stops before the registry is written', async (t) => {
-  const f = await fixture(t, {
-    uploadText: async () => {
-      throw new Error('asset upload failed');
-    },
-  });
-  await assert.rejects(runRelease(f.input, f.io), /asset upload failed/);
-  assert.ok(!f.calls.includes('stage'));
-});
-
-test('published integrity mismatch in an existing draft is not a successful no-op', async (t) => {
-  const f = await fixture(t, {
-    releases: async () => [draft],
-    published: async () => ({ ...cleaned, dist: { integrity: 'sha512-wrong' } }),
-  });
-  await assert.rejects(runRelease(f.input, f.io), /integrity differs/);
-  assert.deepEqual(f.calls, []);
-});
-
-test('finalize publishes from saved SHA, letting GitHub create the absent tag', async (t) => {
-  let published = false;
-  const f = await fixture(t, {
-    releases: async () => [draft],
-    published: async () => ({ ...cleaned, dist: { integrity } }),
-    tagSha: async () => (published ? sha : null),
-    publishDraft: async (release) => {
-      published = true;
-      return { ...release, draft: false };
-    },
-  });
-  const result = await runRelease(
-    { ...f.input, action: 'finalize', version: '1.2.3', sha: 'b'.repeat(40) },
-    f.io,
-  );
-  assert.equal(result['source-sha'], sha);
-  assert.equal(result['jsr-ready'], 'true');
-  assert.deepEqual(f.calls, ['remove-source']);
-});
-
-test('already finalized release enables the JSR retry without npm staging', async (t) => {
-  const f = await fixture(t, {
-    releases: async () => [{ ...draft, draft: false }],
-    published: async () => ({ ...cleaned, dist: { integrity } }),
-    tagSha: async () => sha,
-  });
-  assert.equal(
-    (await runRelease({ ...f.input, action: 'finalize', version: '1.2.3' }, f.io))['jsr-ready'],
-    'true',
-  );
-  assert.deepEqual(f.calls, ['remove-source']);
-});
-
-test('a wrong post-publication tag retains the source branch', async (t) => {
-  let checks = 0;
-  const f = await fixture(t, {
-    releases: async () => [draft],
-    published: async () => ({ ...cleaned, dist: { integrity } }),
-    tagSha: async () => (++checks === 1 ? null : 'b'.repeat(40)),
-  });
-  await assert.rejects(
-    runRelease({ ...f.input, action: 'finalize', version: '1.2.3' }, f.io),
-    /tag does not match/,
-  );
-  assert.ok(f.calls.includes('publish'));
-  assert.ok(!f.calls.includes('remove-source'));
-});
-
-test('cleanup failure retries the finalized version without publishing again', async (t) => {
-  let saved = { ...draft };
-  let publishes = 0;
-  let cleanups = 0;
-  const f = await fixture(t, {
-    releases: async () => [saved],
-    published: async () => ({ ...cleaned, dist: { integrity } }),
-    tagSha: async () => (saved.draft ? null : sha),
-    publishDraft: async (release) => {
-      publishes++;
-      saved = { ...release, draft: false };
-      return saved;
-    },
-    removeSource: async (version, source) => {
-      assert.equal(version, '1.2.3');
-      assert.equal(source, sha);
-      assert.equal(saved.draft, false);
-      if (++cleanups === 1) throw new Error('cleanup denied');
-    },
-  });
-  const finalizeInput = { ...f.input, action: 'finalize', version: '1.2.3', sha: 'b'.repeat(40) };
-  await assert.rejects(runRelease(finalizeInput, f.io), /cleanup denied/);
-  assert.equal((await runRelease(finalizeInput, f.io))['jsr-ready'], 'true');
-  assert.equal(publishes, 1);
-  assert.equal(cleanups, 2);
-  assert.ok(!f.calls.includes('stage'));
-});
-
-for (const [name, overrides] of [
-  ['pending npm', {}],
-  [
-    'wrong integrity',
-    { published: async () => ({ ...cleaned, dist: { integrity: 'sha512-other' } }) },
-  ],
-  [
-    'wrong tag SHA',
-    {
-      published: async () => ({ ...cleaned, dist: { integrity } }),
-      tagSha: async () => 'b'.repeat(40),
-    },
-  ],
-  ['branch-name target', { releases: async () => [{ ...draft, target_commitish: 'main' }] }],
-] satisfies [string, Partial<Runtime>][]) {
-  test(`finalize rejects ${name}`, async (t) => {
-    const f = await fixture(t, { releases: async () => [draft], ...overrides });
-    await assert.rejects(runRelease({ ...f.input, action: 'finalize', version: '1.2.3' }, f.io));
-    assert.ok(!f.calls.includes('publish'));
-    assert.ok(!f.calls.includes('remove-source'));
-  });
-}
-
-test('verify never reads or mutates release state', async (t) => {
-  const f = await fixture(t, {
-    releases: async () => {
-      throw new Error('verify must not call GitHub');
-    },
-    retainSource: async () => {
-      throw new Error('verify must not retain refs');
-    },
-    removeSource: async () => {
-      throw new Error('verify must not delete refs');
-    },
-  });
-  await runRelease({ ...f.input, action: 'verify' }, f.io);
+  const input = { ...f.input, action: 'verify', tag: '', event: 'pull_request' };
+  assert.equal((await resolveSource(input, f.io))['source-sha'], sha);
+  assert.equal((await runRelease(input, f.io, f.path)).submit, 'false');
   assert.deepEqual(f.calls, ['prepare', 'cleanup']);
 });
 
-test('invalid input and shell payloads are rejected before any side effects', () => {
-  for (const version of ['1.2.3-beta.0', '01.2.3', '1.2.3; echo secret', '$(whoami)', '1.2.3\n']) {
-    assert.throws(() => validateInputs({ ...input, action: 'finalize', version }));
-  }
-  assert.throws(() =>
-    validateInputs({ ...input, ref: 'refs/pull/1/merge', event: 'pull_request' }),
-  );
-  assert.throws(() => validateInputs({ ...input, action: 'invalid' }));
-  assert.throws(() => selectRelease([draft, draft], 'v1.2.3'));
-  assert.throws(() => changelogNotes('## v1.2.3 (today)\n\n## v1.2.2 (yesterday)', 'v1.2.3'));
-});
-
-test('real registry cleanup and tarball inspection retain consumer fields', async (t) => {
+test('initial staging prepares evidence; submission requires the artifact round trip', async (t) => {
   const f = await fixture(t);
-  await writeFile(join(f.input.cwd, 'index.js'), 'export default 1;');
-  await writeFile(join(f.input.cwd, 'index.d.ts'), 'declare const n: number; export default n;');
-  const io = await createRuntime({ repository, actionPath: resolve('actions/npm-release') });
-  await io.cleanup(f.input.cwd, 'registry');
-  const cleanedFile = JSON.parse(await readFile(join(f.input.cwd, 'package.json'), 'utf8'));
-  assert.equal(cleanedFile.devDependencies, undefined);
-  assert.equal(cleanedFile.renovate, undefined);
-  assert.deepEqual(cleanedFile.exports, pkg.exports);
-  assert.equal(cleanedFile.types, pkg.types);
-  assert.equal(cleanedFile.sideEffects, false);
-  const packed = await io.pack(f.input.cwd);
-  assert.match(packed.integrity, /^sha512-/);
-  assert.deepEqual(packed.pkg.exports, pkg.exports);
-  assert.ok(packed.files.includes('package/index.js'));
+  const ready = await runRelease(f.input, f.io, f.path);
+  assert.equal(ready.submit, 'true');
+  assert.deepEqual(JSON.parse(await readFile(f.path, 'utf8')), expected);
+  await assert.rejects(
+    submit(f.input, f.io, f.path, ready.tarball || ''),
+    /confirm prepared evidence/,
+  );
+  assert.ok(!f.calls.includes('stage'));
+  f.io.evidence = async () => [expected];
+  assert.equal((await submit(f.input, f.io, f.path, ready.tarball || ''))['npm-state'], 'staged');
+  assert.equal(JSON.parse(await readFile(f.path, 'utf8')).state, 'staged');
+  assert.deepEqual(f.calls, ['prepare', 'cleanup', 'stage']);
 });
 
-test('GitHub adapter paginates draft search and resolves annotated tags', async () => {
-  const seen: string[] = [];
-  const fetcher: typeof fetch = async (request) => {
-    const url = String(request);
-    seen.push(url);
-    if (new URL(url).searchParams.get('page') === '1')
-      return Response.json(
-        Array.from({ length: 100 }, (_, id) => ({ ...draft, id, tag_name: `v0.0.${id}` })),
-      );
-    if (new URL(url).searchParams.get('page') === '2') return Response.json([draft]);
-    if (url.includes('/git/ref/'))
-      return Response.json({ object: { type: 'tag', sha: 'b'.repeat(40) } });
-    if (url.includes('/git/tags/')) return Response.json({ object: { type: 'commit', sha } });
-    throw new Error('Unexpected request');
-  };
-  const io = await createRuntime({ repository, fetcher });
-  const selected = selectRelease(await io.releases(), 'v1.2.3');
-  assert.ok(selected);
-  assert.equal(selected.id, draft.id);
-  assert.equal(await io.tagSha('v1.2.3'), sha);
-  assert.equal(seen.length, 4);
+test('a failed or thrown submission leaves an unknown receipt and is never automatically resent', async (t) => {
+  for (const fail of [
+    async () => ({ code: 1, stdout: '' }),
+    async (): Promise<never> => {
+      throw new Error('connection lost');
+    },
+  ]) {
+    const f = await fixture(t, { stage: fail });
+    await runRelease(f.input, f.io, f.path);
+    f.io.evidence = async () => [expected];
+    await assert.rejects(submit(f.input, f.io, f.path, '/package.tgz'));
+    const receipt = JSON.parse(await readFile(f.path, 'utf8'));
+    assert.equal(receipt.state, 'unknown');
+    f.io.evidence = async () => [expected, receipt];
+    await assert.rejects(runRelease(f.input, f.io, f.path), /without a successful receipt/);
+  }
 });
 
-test('permission 403 from GitHub is not treated as missing release', async () => {
-  const io = await createRuntime({
-    repository,
-    fetcher: async () => new Response('', { status: 403 }),
+test('receipt retries skip builds and npm staging while approval is pending', async (t) => {
+  const f = await fixture(t, {
+    evidence: async () => [expected, { ...expected, state: 'staged' }],
   });
-  await assert.rejects(io.releases(), /permissions/);
+  const result = await runRelease(f.input, f.io, f.path);
+  assert.equal(result['npm-state'], 'staged');
+  assert.equal(result.submit, 'false');
+  assert.deepEqual(f.calls, []);
 });
 
-test('receipt updates and publication preserve a draft tag before its Git ref exists', async () => {
-  let saved = { ...draft };
-  const io = await createRuntime({
-    repository,
-    fetcher: async (_request, options) => {
-      assert.equal(options?.method, 'PATCH');
-      const patch = JSON.parse(String(options.body));
-      // Reproduce GitHub's behavior for a draft whose version tag is not created yet.
-      saved = { ...saved, ...patch, tag_name: patch.tag_name ?? 'untagged-placeholder' };
-      return Response.json(saved);
+test('public npm retries compare saved integrity and never rebuild or resend', async (t) => {
+  const f = await fixture(t, {
+    evidence: async () => [expected],
+    published: async () => ({ ...pkg, dist: { integrity } }),
+  });
+  assert.equal((await runRelease(f.input, f.io, f.path))['npm-state'], 'published');
+  assert.deepEqual(f.calls, []);
+  f.io.published = async () => ({ ...pkg, dist: { integrity: 'different' } });
+  await assert.rejects(runRelease(f.input, f.io, f.path), /mismatch/);
+  f.io.evidence = async () => [];
+  await assert.rejects(runRelease(f.input, f.io, f.path), /Missing evidence/);
+});
+
+test('missing, expired, malformed and conflicting evidence stop retries', async (t) => {
+  const f = await fixture(t, { submissionStarted: async () => true });
+  await assert.rejects(runRelease(f.input, f.io, f.path), /without a successful receipt/);
+  for (const value of [
+    null,
+    { ...expected, sha: 'b'.repeat(40) },
+    { ...expected, integrity: 'bad' },
+    { ...expected, state: 'absent' },
+  ]) {
+    f.io.evidence = async () => [value as Evidence];
+    await assert.rejects(runRelease(f.input, f.io, f.path));
+  }
+  f.io.evidence = async () => {
+    throw new Error('expired');
+  };
+  await assert.rejects(runRelease(f.input, f.io, f.path), /expired/);
+  f.io.evidence = async () => [
+    expected,
+    { ...expected, integrity: `sha512-${Buffer.alloc(64, 1).toString('base64')}` },
+  ];
+  await assert.rejects(runRelease(f.input, f.io, f.path), /Conflicting/);
+  assert.deepEqual(f.calls, []);
+});
+
+test('drafts, prereleases, moved tags, wrong version and lookup failures stop before staging', async (t) => {
+  const f = await fixture(t);
+  for (const value of [
+    { ...release, draft: true },
+    { ...release, prerelease: true },
+    { ...release, tag_name: 'v1.2.4' },
+  ]) {
+    f.io.release = async () => value;
+    await assert.rejects(resolveSource(f.input, f.io));
+    await assert.rejects(runRelease(f.input, f.io, f.path));
+  }
+  f.io.release = async () => release;
+  f.io.tagSha = async () => 'b'.repeat(40);
+  await assert.rejects(runRelease(f.input, f.io, f.path), /changed/);
+  f.io.tagSha = async () => sha;
+  await assert.rejects(runRelease({ ...f.input, tag: 'v1.2.4' }, f.io, f.path), /version differ/);
+  f.io.published = async () => {
+    throw new Error('npm forbidden');
+  };
+  await assert.rejects(runRelease(f.input, f.io, f.path), /forbidden/);
+  assert.deepEqual(f.calls, []);
+});
+
+test('tag and registry are checked again before sending the prepared tarball', async (t) => {
+  const f = await fixture(t);
+  await runRelease(f.input, f.io, f.path);
+  f.io.evidence = async () => [expected];
+  f.io.tagSha = async () => 'b'.repeat(40);
+  await assert.rejects(submit(f.input, f.io, f.path, '/package.tgz'), /changed/);
+  f.io.tagSha = async () => sha;
+  f.io.published = async () => pkg;
+  await assert.rejects(submit(f.input, f.io, f.path, '/package.tgz'), /registry state changed/);
+  assert.ok(!f.calls.includes('stage'));
+});
+
+test('cleanup cannot change consumer fields, leave dev metadata, or use local cleanup for other packages', async (t) => {
+  const f = await fixture(t);
+  const pack = f.io.pack;
+  f.io.pack = async (cwd) => ({
+    ...(await pack(cwd)),
+    pkg: { ...pkg, devDependencies: undefined, exports: {} },
+  });
+  await assert.rejects(runRelease(f.input, f.io, f.path), /consumer field/);
+  f.io.pack = async (cwd) => ({ ...(await pack(cwd)), pkg });
+  await assert.rejects(runRelease(f.input, f.io, f.path), /development metadata/);
+  await assert.rejects(runRelease({ ...f.input, cleanup: 'local' }, f.io, f.path), /Local cleanup/);
+});
+
+test('publishing input policy rejects old operations, arbitrary tags and publishing events', () => {
+  const base = { cwd: '.', action: 'stage', tag, sha, repository, event: 'release' };
+  for (const change of [
+    { action: 'finalize' },
+    { event: 'push' },
+    { event: 'pull_request' },
+    { tag: 'v1.2.3-beta' },
+    { tag: 'v1.2.3\n' },
+    { sha: 'main' },
+    { repository: 'example/widget\n' },
+  ])
+    assert.throws(() => validateInputs({ ...base, ...change }));
+});
+
+test('a failed build can be retried or manually dispatched before submission', async (t) => {
+  const f = await fixture(t, {
+    prepare: async () => {
+      throw new Error('flaky build');
     },
   });
-  await io.updateBody(draft, 'Staging succeeded.');
-  assert.equal(saved.tag_name, draft.tag_name);
-  assert.equal(saved.target_commitish, sha);
-  assert.equal(saved.draft, true);
-  const published = await io.publishDraft(saved);
-  assert.equal(published.tag_name, draft.tag_name);
-  assert.equal(published.target_commitish, sha);
-  assert.equal(published.draft, false);
+  await assert.rejects(runRelease(f.input, f.io, f.path), /flaky build/);
+  f.io.prepare = async () => {
+    f.calls.push('prepare');
+  };
+  const retry = { ...f.input, event: 'workflow_dispatch' };
+  assert.equal((await runRelease(retry, f.io, f.path)).submit, 'true');
+  f.io.evidence = async () => [expected];
+  assert.equal((await submit(retry, f.io, f.path, '/package.tgz'))['npm-state'], 'staged');
 });
 
-test('release PATCH responses must retain the saved identity and requested state', async () => {
-  for (const change of [
-    { id: 2 },
-    { tag_name: 'untagged-placeholder' },
-    { target_commitish: 'b'.repeat(40) },
-    { draft: false },
-  ]) {
-    const io = await createRuntime({
-      repository,
-      fetcher: async () => Response.json({ ...draft, ...change }),
-    });
-    await assert.rejects(io.updateBody(draft, 'Receipt'), /saved identity/);
-  }
-  const io = await createRuntime({ repository, fetcher: async () => Response.json(draft) });
-  await assert.rejects(io.publishDraft(draft), /publication state/);
+test('an uploaded preparation artifact without a started submission can be rebuilt safely', async (t) => {
+  const f = await fixture(t, { evidence: async () => [expected] });
+  assert.equal((await runRelease(f.input, f.io, f.path)).submit, 'true');
+  assert.ok(f.calls.includes('prepare'));
+  f.io.submissionStarted = async () => true;
+  await assert.rejects(runRelease(f.input, f.io, f.path), /without a successful receipt/);
+});
+
+test('manual publishing resolves only the selected Release commit for accurate provenance', async (t) => {
+  const f = await fixture(t);
+  await assert.rejects(
+    resolveSource({ ...f.input, event: 'workflow_dispatch', sha: 'b'.repeat(40) }, f.io),
+    /dispatch on the Release tag/,
+  );
+  assert.equal(
+    (await resolveSource({ ...f.input, event: 'workflow_dispatch' }, f.io))['source-sha'],
+    sha,
+  );
 });
