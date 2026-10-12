@@ -1,0 +1,53 @@
+name: Shared npm release
+description: Verify, stage or finalize a public npm package
+inputs:
+  action:
+    description: verify, stage or finalize
+    default: verify
+  version:
+    description: Stable version to finalize
+    default: ''
+  cleanup-source:
+    description: registry or local
+    default: registry
+outputs:
+  package-name:
+    description: Release package-name
+    value: ${{ steps.release.outputs.package-name }}
+  version:
+    description: Release version
+    value: ${{ steps.release.outputs.version }}
+  tag:
+    description: Release tag
+    value: ${{ steps.release.outputs.tag }}
+  source-sha:
+    description: Release source-sha
+    value: ${{ steps.release.outputs.source-sha }}
+  npm-state:
+    description: Release npm-state
+    value: ${{ steps.release.outputs.npm-state }}
+  github-state:
+    description: Release github-state
+    value: ${{ steps.release.outputs.github-state }}
+  jsr-ready:
+    description: Release jsr-ready
+    value: ${{ steps.release.outputs.jsr-ready }}
+  release-url:
+    description: Release release-url
+    value: ${{ steps.release.outputs.release-url }}
+runs:
+  using: composite
+  steps:
+    - name: Install locked cleanup tooling
+      shell: bash
+      env:
+        COMMON_ACTION_PATH: ${{ github.action_path }}
+      run: npm ci --prefix "$COMMON_ACTION_PATH" --ignore-scripts --no-audit --no-fund
+    - id: release
+      shell: bash
+      env:
+        COMMON_ACTION_PATH: ${{ github.action_path }}
+        RELEASE_ACTION: ${{ inputs.action }}
+        RELEASE_VERSION: ${{ inputs.version }}
+        RELEASE_CLEANUP_SOURCE: ${{ inputs.cleanup-source }}
+      run: node "$COMMON_ACTION_PATH/src/cli.mjs"
