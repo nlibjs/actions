@@ -44,3 +44,11 @@ nlibjsの5repoのリリースを共通化し、gjbkzの個人repoでも利用可
 - R1資料と計画をdocs/tasksへ移設。例6件、README、検証結果を整理した。既存LICENSEは維持。
 - 実際のOIDC、provenance署名、draft公開はR3後の通常リリースで確認する。fixture/dry-runの成功と実公開成功を区別する。
 - レビュー用PRを作成予定。mainへのマージ、caller導入、npm/GitHub/JSR公開は行っていない。
+
+## R2の最終状態
+
+- draft PR: https://github.com/nlibjs/actions/pull/1
+- branch: feat/shared-npm-release。補助actionコミットAへ固定したworkflowを含むコミットBはd577ffcdcc47ba0d0fe3430c6dd566c3d2655423。
+- GitHub上のValidate jobはlint、24件のtest、workflow契約checkを含め成功した（https://github.com/nlibjs/actions/actions/runs/38199788600）。
+- branch送信が完了する前のPR作成はhead ref未存在で失敗。送信完了後に再作成し成功した。mainや他repoには変更していない。
+- R2準備完了。Claudeの技術レビューとユーザーの最終判断を待つ。マージ・R3導入・実公開は進めない。
