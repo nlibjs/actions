@@ -52,7 +52,7 @@ Cleaned tarball integrity from this verification: `sha512-a/38rz9JFxPm3YqLKXlFs9
 
 Pre-existing package detail: `main: ./lib/index.js` refers to a file absent from both comparison tarballs. R3 preserves that field; the package's CLI entry is present and its installed CLI behavior passed. Consider the main entry in separate package review rather than assuming this migration validates a library entry point.
 
-## Remaining R3 and pilot work
+## Pre-merge R3 checkpoint (historical)
 
 The adoption PR is a draft awaiting technical review and the user's merge decision. Its [compatibility CI run](https://github.com/nlibjs/changelog/actions/runs/38208801858) provides the existing platform/Node checks.
 
@@ -65,3 +65,7 @@ Read-only npm metadata on 2026-10-12 confirms 0.4.0 is public, and its Git versi
 Adoption PR #554 and plan PR #4 are merged. [Main verify run 38209633075](https://github.com/nlibjs/changelog/actions/runs/38209633075) concluded `startup_failure` with no jobs. GitHub's annotation reports that skipped Stage and ProtectedStage jobs requested contents write and id-token write above the Verify caller's contents-read-only ceiling. The original local checks covered helper execution and each workflow in isolation, but did not validate this nested permission combination.
 
 Correct the shared workflow to inherit caller permissions for publishing jobs, retain explicit read-only ValidateInputs/Verify, and update the caller's fixed workflow SHA. Include whole-graph caller permission regression checks and disabled narrow reusable calls in validation CI. Main verify must pass after both reviewed changes are merged; real OIDC/provenance remains for the normal pilot release.
+
+## Completed pilot
+
+The 0.4.1 pilot is finalized. See [R4 results](../t005-changelog-pilot/verification.md) for the current pins, publication evidence and recovery findings.

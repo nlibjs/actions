@@ -77,7 +77,7 @@ Only after a maintainer confirms that neither a pending nor a public version exi
 
 Find drafts by paging through the authenticated release list. Stop if multiple Releases share the tag; do not choose the newest automatically. Persist only Release tag_name/target_commitish, package.tgz, and package.integrity. There is no custom record schema or stage-ID-dependent automatic recovery.
 
-Do not treat a Release operation returning 403/404 as proof of absence. GitHub may require additional workflow modification permissions when the saved target's workflow files differ from the default branch. Do not add a long-lived token automatically; review the configuration and procedure instead.
+A Release operation returning 403/404 is not proof of absence. When the saved commit's workflow files differ from the default branch and no branch or tag points directly to that SHA, [GitHub requires workflow modification permission](https://github.blog/changelog/2023-11-02-github-actions-enforcing-workflow-scope-when-creating-a-release/). After checking the draft source and assets, a maintainer can retain the saved SHA with a temporary branch, retry finalize, and delete the branch once the published tag is verified. The shared helper does not retain this source ref automatically. See the [changelog pilot recovery](docs/tasks/t005-changelog-pilot/verification.md).
 
 ## Authentication and permissions
 
