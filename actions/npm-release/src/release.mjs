@@ -61,12 +61,7 @@ export async function runRelease(raw, io) {
       io.summary(
         `No-op: existing draft for ${tag}; no re-staging. ${finalizeInstructions(original.version)} If the prior command failed, check npm Staged Packages before any retry.`,
       );
-      return output(
-        original,
-        saved.sha,
-        published ? 'published' : 'staged',
-        release,
-      );
+      return output(original, saved.sha, published ? 'published' : 'staged', release);
     }
   }
 
