@@ -70,6 +70,7 @@ The `release-source/v<version>` namespace is reserved for temporary release refs
 | Staging exits 0 but updating the body fails | Record npm success in the summary; do not resend while the draft exists |
 | GitHub or JSR fails | Re-run finalize for the same version when npm and the saved integrity match |
 | A pending run is replaced and stage never runs | Confirm the target version is on main, then run stage manually |
+| A failed attempt leaves only a source branch; no draft, pending/public npm version, or version tag exists | After a maintainer confirms those states and the recorded source SHA, manually delete `release-source/v<version>` and run stage on current main |
 
 finalize also inspects published Releases, but does not automatically modify historical Releases without the new assets. Resolve existing tags to their commit SHA. Let GitHub create a missing tag when publishing the draft, then verify its SHA afterward.
 
