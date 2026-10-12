@@ -27,3 +27,7 @@ Expected package integrity: `sha512-4J0t1edsA8NhVAZwBjnPsf6uRDLRdHdKUBZihsDiQpq3
 ## Immutable pins
 
 Helper implementation: `d685c67777dfeb0325ecc707533bf5dddbd26439`. The subsequent workflow commit pins this existing helper in all five operation jobs. Preserve both commits with a merge commit, then update callers to the reviewed workflow commit.
+
+## Recovery outcome
+
+[Verified recovery run 38222860101](https://github.com/nlibjs/changelog/actions/runs/38222860101) restored the existing draft tag while preserving its body, assets and source. Actions #6 and changelog #558 are merged. [Finalization attempt 2](https://github.com/nlibjs/changelog/actions/runs/38240278529/attempts/2) passed after retaining a temporary source ref for GitHub's workflow permission check. The published tag matches the saved SHA; the temporary branch is deleted. See [pilot results](../t005-changelog-pilot/verification.md).

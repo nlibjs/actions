@@ -1,6 +1,6 @@
 # Shared workflow task record
 
-Current status (2026-10-12): Shared PRs #1 and #3 are merged. R3 adoption PR #554 and plan PR #4 are merged. The first main verify run failed at workflow startup; shared permission inheritance and the caller pin need correction before verify can pass and the normal pilot can proceed. The earlier R2 status sections below are historical.
+Current status (2026-10-12): The changelog 0.4.1 pilot is finalized. Published npm, provenance, saved GitHub assets and the version tag agree with the saved source. [R4 results](../t005-changelog-pilot/verification.md) are ready for review; rollout to additional callers awaits approval. Earlier checkpoint sections below are historical.
 
 ## Request and agreement
 
@@ -92,3 +92,10 @@ PR #1 merged with a merge commit on 2026-10-12, preserving the R2 helper pin. Th
 - Keep the caller's narrow operation permissions. Remove fixed write requests from shared publishing jobs and the shared workflow default; those jobs inherit the caller ceiling. Keep ValidateInputs and Verify explicitly read-only. The helper SHA, input/output interface, operation guards, and release/recovery behavior are unchanged.
 - Add cross-workflow checks for every example and additional caller paths, including skipped nested jobs. Add regression tests for read-only verify, contents-write-only finalize, and workflow-level permission requests. Validation CI also contains disabled local reusable calls with narrow Verify/Finalize ceilings for GitHub's own startup validation.
 - Prepare a separate caller pin update. Merge the shared workflow fix first, then its caller pin update, and rerun main verify before staging a normal version. This failed run did not publish or mutate a draft.
+
+## Changelog pilot completion
+
+- Permission inheritance and caller pin fixes enabled Verify and Stage. The maintainer confirmed Trusted Publisher configuration, approved npm 0.4.1, and started Finalize.
+- Draft-tag preservation was corrected in actions #6 and changelog #558. Recovery retained the original assets and source.
+- Finalize attempt 2 succeeded after a temporary source branch addressed GitHub workflow permission checks. The branch was deleted after confirming the published tag.
+- [Pilot evidence and rollout decisions](../t005-changelog-pilot/verification.md) cover provenance/signatures, package integrity, release/tag source consistency and the remaining source-ref procedure.
