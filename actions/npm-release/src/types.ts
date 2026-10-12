@@ -90,6 +90,8 @@ export interface Runtime {
   releases(): Promise<Release[]>;
   published(name: string, version: string): Promise<PackageMetadata | null>;
   tagSha(tag: string): Promise<string | null>;
+  retainSource(version: string, sha: string): Promise<void>;
+  removeSource(version: string, sha: string): Promise<void>;
   prepare(cwd: string): Promise<void>;
   cleanup(cwd: string, source: CleanupSource): Promise<void>;
   pack(cwd: string): Promise<PackedTarball>;

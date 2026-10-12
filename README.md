@@ -47,13 +47,15 @@ Repositories using Biome pin it in devDependencies and the lockfile. ESLint/Pret
 ## Release procedure
 
 1. A package.json change on main or a manual stage starts release verification. Checkout includes the full history.
-2. Run lint/test/build, perform mandatory cleanup, and create one tarball. Save the tarball and its integrity on a draft Release before sending it to npm.
+2. Retain the source SHA in `release-source/v<version>` before lint/test/build. Perform mandatory cleanup, create one tarball, and save the tarball and integrity on a draft Release. Confirm the source branch before sending that tarball to npm.
 3. Treat exit code 0 from `npm stage publish` as success. A stage ID is optional diagnostic information; failure to extract it does not fail staging.
 4. A maintainer approves the version with 2FA in npmjs.com's Staged Packages page.
 5. Run the caller's Release workflow on main with action=finalize and version set to the approved version.
-6. Verify npm dist.integrity against the saved tarball, check the tag against the fixed SHA, and publish the draft. Run JSR afterward.
+6. Verify npm dist.integrity against the saved tarball, publish the draft, and check the version tag against the fixed SHA. Delete the matching source branch, then run JSR if configured.
 
-An Actions run does not wait across the approval period. finalize uses the draft's fixed SHA and tarball rather than rebuilding the latest main. The draft body and step summary include the approval and finalize instructions.
+Release runners need Git for conditional source-branch cleanup. An Actions run does not wait across the approval period. finalize uses the draft's fixed SHA and tarball rather than rebuilding the latest main. The draft body and step summary include the approval and finalize instructions.
+
+The `release-source/v<version>` namespace is reserved for temporary release refs. An existing ref is reused only at the exact source SHA; conflicts stop staging. Stage failures retain the ref for recovery. Finalize uses a Git lease to delete only the saved SHA, so a concurrently moved branch is retained. Cleanup failures can be retried through Finalize after publication. Older releases with no source branch remain supported.
 
 ## Existing versions and failures
 
@@ -73,11 +75,11 @@ finalize also inspects published Releases, but does not automatically modify his
 
 After a failed stage, inspect npm Staged Packages and the public registry for the exact package/version. If a pending version exists, approve it and run finalize; if a public version exists, run finalize to verify it against the saved tarball. An unconfirmed draft keeps subsequent stage runs failing until the published version can be verified. This also applies if staging succeeded but saving its receipt failed.
 
-Only after a maintainer confirms that neither a pending nor a public version exists may they reset a definitively failed attempt (for example, a rejected Trusted Publisher configuration). Record the error and the draft's target SHA, save its assets for diagnosis, fix the cause, then manually delete that draft and run stage again. The new attempt rebuilds the current main; verify its version and changes against the recorded SHA before proceeding. If npm's state is uncertain, retain the draft and investigate instead of resetting. There is no automatic deletion or retry.
+Only after a maintainer confirms that neither a pending nor a public version exists may they reset a definitively failed attempt (for example, a rejected Trusted Publisher configuration). Record the error and source SHA, save any draft assets for diagnosis, fix the cause, then manually delete that draft and its matching temporary source branch before running stage again. A failed build can leave a source branch without a draft. The new attempt rebuilds current main; verify its version and changes against the recorded SHA. If npm's state is uncertain, retain the draft and source branch for investigation.
 
-Find drafts by paging through the authenticated release list. Stop if multiple Releases share the tag; do not choose the newest automatically. Persist only Release tag_name/target_commitish, package.tgz, and package.integrity. There is no custom record schema or stage-ID-dependent automatic recovery.
+Find drafts by paging through the authenticated release list. Stop if multiple Releases share the tag; do not choose the newest automatically. Release state consists of tag_name/target_commitish, package.tgz, package.integrity, and the temporary source branch. There is no custom record schema or stage-ID-dependent automatic recovery.
 
-A Release operation returning 403/404 is not proof of absence. When the saved commit's workflow files differ from the default branch and no branch or tag points directly to that SHA, [GitHub requires workflow modification permission](https://github.blog/changelog/2023-11-02-github-actions-enforcing-workflow-scope-when-creating-a-release/). After checking the draft source and assets, a maintainer can retain the saved SHA with a temporary branch, retry finalize, and delete the branch once the published tag is verified. The shared helper does not retain this source ref automatically. See the [changelog pilot recovery](docs/tasks/t005-changelog-pilot/verification.md).
+A Release operation returning 403/404 is not proof of absence. When the saved commit's workflow files differ from the default branch and no branch or tag points directly to that SHA, [GitHub requires workflow modification permission](https://github.blog/changelog/2023-11-02-github-actions-enforcing-workflow-scope-when-creating-a-release/). Automatic source retention keeps a ref throughout npm approval. An already-outdated queued Stage run can still encounter a permission failure while creating its ref. For older drafts or creation failures, a maintainer can verify the saved SHA and assets, retain that SHA with a temporary source branch, and retry the failed operation. See the [changelog pilot recovery](docs/tasks/t005-changelog-pilot/verification.md).
 
 ## Authentication and permissions
 

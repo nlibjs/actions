@@ -99,3 +99,7 @@ PR #1 merged with a merge commit on 2026-10-12, preserving the R2 helper pin. Th
 - Draft-tag preservation was corrected in actions #6 and changelog #558. Recovery retained the original assets and source.
 - Finalize attempt 2 succeeded after a temporary source branch addressed GitHub workflow permission checks. The branch was deleted after confirming the published tag.
 - [Pilot evidence and rollout decisions](../t005-changelog-pilot/verification.md) cover provenance/signatures, package integrity, release/tag source consistency and the remaining source-ref procedure.
+
+## Source-ref review follow-up
+
+The [pilot review](https://github.com/nlibjs/actions/pull/7#pullrequestreview-5489994474) accepted the release evidence and recommended automatic source retention before expansion. The [follow-up implementation](../t006-source-ref-retention/verification.md) retains the caller SHA before build, rejects conflicts and uses conditional deletion after verifying the published tag. A separate implementation PR and caller pin review precede further adoption.

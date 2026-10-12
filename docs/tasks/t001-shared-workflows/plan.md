@@ -62,7 +62,7 @@ Commit helper changes as A, then update the workflow's pinned helper reference i
 ## Current next steps: R4 pilot review
 
 1. Review the [pilot results](../t005-changelog-pilot/verification.md), including the successful finalization and the temporary source-ref recovery for workflow permission restrictions.
-2. Decide whether conditional maintainer recovery is acceptable or source-ref retention should be implemented during Stage before expansion. Review the remaining repositories' differences and approve the next adoption.
+2. Review and deploy [automatic source-ref retention](../t006-source-ref-retention/verification.md), then update the changelog pin and verify ref creation/cleanup with its GitHub token before expansion. Review the remaining repositories' differences and approve the next adoption.
 3. Adopt lint-commit and cleanup-package-json first; review typing and negotiate separately with their JSR behavior. Keep personal-repository adoption and compatibility CI changes in later phases.
 
 The changelog 0.4.1 release removed the nonexistent library main entry through PR #556. Its CLI is verified. Removing changelog's extra Biome installation remains R6 or a separate PR.

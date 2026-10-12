@@ -82,6 +82,7 @@ export async function runRelease(raw: RawInputs, io: Runtime): Promise<ReleaseOu
     }
   }
 
+  if (input.action === 'stage') await io.retainSource(original.version, input.sha);
   await io.prepare(input.cwd);
   const notes = changelogNotes(await readFile(`${input.cwd}/CHANGELOG.md`, 'utf8'), tag);
   await io.cleanup(input.cwd, input.cleanup);
@@ -136,6 +137,9 @@ export async function runRelease(raw: RawInputs, io: Runtime): Promise<ReleaseOu
   const saved = await inspectAssets(persisted, input.repository, original.version, io);
   if (saved.sha !== input.sha || saved.integrity !== prepared.integrity)
     throw new Error('Saved draft differs from the prepared tarball');
+
+  // Confirm the source ref again before npm receives the saved package.
+  await io.retainSource(original.version, saved.sha);
 
   const result = await io.stage(prepared.tarball);
   if (result.code !== 0) {
@@ -197,6 +201,7 @@ async function finalize(input: ReleaseInputs, io: Runtime): Promise<ReleaseOutpu
   const final = release.draft ? await io.publishDraft(release) : release;
   const afterSha = await io.tagSha(release.tag_name);
   if (afterSha !== saved.sha) throw new Error('Published release tag does not match the saved SHA');
+  await io.removeSource(input.version, saved.sha);
   io.summary(
     `Finalized ${saved.pkg.name}@${input.version} from ${saved.sha}. npm integrity matches. JSR may run or retry independently.`,
   );

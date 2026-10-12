@@ -4,7 +4,7 @@ import { appendFile, mkdtemp, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { githubRelease, gitObject, isRecord, packageMetadata, record } from './json.ts';
-import { REGISTRY, SHA } from './policy.ts';
+import { REGISTRY, SHA, sourceBranch } from './policy.ts';
 import type { CommandResult, Release, Runtime } from './types.ts';
 
 interface CommandOptions {
@@ -16,6 +16,7 @@ interface RuntimeOptions {
   repository: string;
   actionPath?: string;
   npm?: [string, ...string[]];
+  git?: [string, ...string[]];
   fetcher?: typeof fetch;
   env?: NodeJS.ProcessEnv;
 }
@@ -51,6 +52,7 @@ export async function createRuntime({
   repository,
   actionPath,
   npm = ['npm'],
+  git = ['git'],
   fetcher = fetch,
   env = process.env,
 }: RuntimeOptions): Promise<Runtime> {
@@ -71,7 +73,12 @@ export async function createRuntime({
     'X-GitHub-Api-Version': '2022-11-28',
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
   };
-  const request = async (url: string, init: RequestInit = {}, allow404 = false) => {
+  const request = async (
+    url: string,
+    init: RequestInit = {},
+    allow404 = false,
+    allowedStatuses: number[] = [],
+  ) => {
     const parsed = new URL(url);
     if (
       !['api.github.com', 'uploads.github.com'].includes(parsed.hostname) ||
@@ -84,7 +91,7 @@ export async function createRuntime({
       signal: AbortSignal.timeout(120_000),
     });
     if (response.status === 404 && allow404) return null;
-    if (!response.ok)
+    if (!response.ok && !allowedStatuses.includes(response.status))
       throw new Error(
         `GitHub ${init.method || 'GET'} ${parsed.pathname} failed (${response.status}). Check permissions and target workflow changes; not treated as absence.`,
       );
@@ -104,6 +111,23 @@ export async function createRuntime({
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
     });
+
+  const sourceSha = async (version: string): Promise<string | null> => {
+    const branch = sourceBranch(version);
+    const value = await jsonRequest(`${apiBase}/git/ref/heads/${branch}`, undefined, true);
+    if (value === null) return null;
+    const ref = record(value, 'source reference');
+    const object = gitObject(ref);
+    if (ref.ref !== `refs/heads/${branch}` || object.type !== 'commit' || !SHA.test(object.sha))
+      throw new Error('Invalid source reference');
+    return object.sha;
+  };
+  const checkSource = (actual: string | null, expected: string) => {
+    if (actual !== expected)
+      throw new Error(
+        'Source branch is missing or points at a different SHA; inspect it before retrying',
+      );
+  };
 
   const updateRelease = async (release: Release, changes: { body?: string; draft?: boolean }) => {
     // GitHub can replace an uncreated draft tag with `untagged-*` when a PATCH omits it.
@@ -149,6 +173,74 @@ export async function createRuntime({
         object = gitObject(await jsonRequest(`${apiBase}/git/tags/${object.sha}`));
       }
       throw new Error('Too many nested annotated tags');
+    },
+    async retainSource(version, sha) {
+      if (!SHA.test(sha)) throw new Error('Invalid source SHA');
+      const existing = await sourceSha(version);
+      if (existing !== null) {
+        checkSource(existing, sha);
+        return;
+      }
+      const response = await request(
+        `${apiBase}/git/refs`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ref: `refs/heads/${sourceBranch(version)}`, sha }),
+        },
+        false,
+        [422],
+      );
+      if (!response) throw new Error('Missing source reference response');
+      if (response.status !== 422) {
+        const created = record(await response.json(), 'source reference');
+        const object = gitObject(created);
+        if (created.ref !== `refs/heads/${sourceBranch(version)}` || object.type !== 'commit')
+          throw new Error('Invalid created source reference');
+        checkSource(object.sha, sha);
+      }
+      // A concurrent creator may return 422; only the exact saved SHA is acceptable.
+      checkSource(await sourceSha(version), sha);
+    },
+    async removeSource(version, sha) {
+      if (!SHA.test(sha)) throw new Error('Invalid source SHA');
+      const existing = await sourceSha(version);
+      if (existing === null) return;
+      checkSource(existing, sha);
+      if (!token) throw new Error('Source branch cleanup requires GitHub authentication');
+      const count = Number(env.GIT_CONFIG_COUNT || '0');
+      if (!Number.isSafeInteger(count) || count < 0)
+        throw new Error('Invalid Git configuration count');
+      const gitDir = join(work, 'source-cleanup.git');
+      await must(git[0], [...git.slice(1), 'init', '--bare', gitDir]);
+      const ref = `refs/heads/${sourceBranch(version)}`;
+      const result = await command(
+        git[0],
+        [
+          ...git.slice(1),
+          '-C',
+          gitDir,
+          'push',
+          `--force-with-lease=${ref}:${sha}`,
+          `https://github.com/${repository}.git`,
+          `:${ref}`,
+        ],
+        {
+          env: {
+            ...env,
+            GIT_TERMINAL_PROMPT: '0',
+            GIT_CONFIG_COUNT: String(count + 1),
+            [`GIT_CONFIG_KEY_${count}`]: 'http.https://github.com/.extraheader',
+            [`GIT_CONFIG_VALUE_${count}`]: `AUTHORIZATION: basic ${Buffer.from(`x-access-token:${token}`).toString('base64')}`,
+          },
+        },
+      );
+      if (result.code !== 0)
+        throw new Error(
+          'Source branch cleanup failed after release/tag verification; inspect permissions or a moved branch, then retry finalize',
+        );
+      if ((await sourceSha(version)) !== null)
+        throw new Error('Source branch still exists after cleanup; inspect it before retrying');
     },
     async published(name, version) {
       const result = await npmRun(

@@ -7,6 +7,11 @@ export const REGISTRY = 'https://registry.npmjs.org/';
 export const TARBALL_ASSET = 'package.tgz';
 export const INTEGRITY_ASSET = 'package.integrity';
 
+export function sourceBranch(version: string): string {
+  if (!VERSION.test(version)) throw new Error('Invalid source branch version');
+  return `release-source/v${version}`;
+}
+
 export function validateInputs(input: RawInputs): ReleaseInputs {
   const action = input.action || 'verify';
   const version = input.version || '';
