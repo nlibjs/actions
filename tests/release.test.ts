@@ -76,6 +76,12 @@ async function fixture(t: TestContext, overrides: Partial<Runtime> = {}) {
     releases: async () => releaseList,
     published: async () => null,
     tagSha: async () => null,
+    retainSource: async () => {
+      calls.push('retain-source');
+    },
+    removeSource: async () => {
+      calls.push('remove-source');
+    },
     prepare: async () => {
       calls.push('prepare');
     },
@@ -157,11 +163,13 @@ test('exit 0 is success even without a parseable stage ID; assets precede stagin
   const result = await runRelease(f.input, f.io);
   assert.equal(result['npm-state'], 'staged');
   assert.deepEqual(f.calls, [
+    'retain-source',
     'prepare',
     'cleanup',
     'draft',
     'tarball',
     'integrity',
+    'retain-source',
     'stage',
     'receipt',
   ]);
@@ -173,6 +181,31 @@ test('nonzero staging preserves the draft and never finalizes', async (t) => {
   await assert.rejects(runRelease(f.input, f.io), /unknown/);
   assert.ok(f.calls.includes('draft'));
   assert.ok(!f.calls.includes('publish'));
+  assert.ok(!f.calls.includes('remove-source'));
+});
+
+test('source retention failure stops before preparation or staging', async (t) => {
+  const f = await fixture(t, {
+    retainSource: async () => {
+      throw new Error('source conflict');
+    },
+  });
+  await assert.rejects(runRelease(f.input, f.io), /source conflict/);
+  assert.deepEqual(f.calls, []);
+});
+
+test('source retention is checked again after the build before npm receives the package', async (t) => {
+  let checks = 0;
+  const f = await fixture(t, {
+    retainSource: async (_version, source) => {
+      assert.equal(source, sha);
+      if (++checks === 2) throw new Error('source moved during build');
+    },
+  });
+  await assert.rejects(runRelease(f.input, f.io), /source moved/);
+  assert.ok(f.calls.includes('integrity'));
+  assert.ok(!f.calls.includes('stage'));
+  assert.ok(!f.calls.includes('remove-source'));
 });
 
 test('successful npm stage followed by receipt failure remains visibly successful on npm', async (t) => {
@@ -185,6 +218,7 @@ test('successful npm stage followed by receipt failure remains visibly successfu
   assert.match(f.summaries.join('\n'), /npm staging succeeded/);
   await assert.rejects(runRelease(f.input, f.io), /unknown/);
   assert.equal(f.calls.filter((c) => c === 'stage').length, 1);
+  assert.ok(!f.calls.includes('remove-source'));
 });
 
 test('an existing draft is never sent again', async (t) => {
@@ -244,7 +278,7 @@ test('finalize publishes from saved SHA, letting GitHub create the absent tag', 
   );
   assert.equal(result['source-sha'], sha);
   assert.equal(result['jsr-ready'], 'true');
-  assert.deepEqual(f.calls, []);
+  assert.deepEqual(f.calls, ['remove-source']);
 });
 
 test('already finalized release enables the JSR retry without npm staging', async (t) => {
@@ -257,7 +291,50 @@ test('already finalized release enables the JSR retry without npm staging', asyn
     (await runRelease({ ...f.input, action: 'finalize', version: '1.2.3' }, f.io))['jsr-ready'],
     'true',
   );
-  assert.deepEqual(f.calls, []);
+  assert.deepEqual(f.calls, ['remove-source']);
+});
+
+test('a wrong post-publication tag retains the source branch', async (t) => {
+  let checks = 0;
+  const f = await fixture(t, {
+    releases: async () => [draft],
+    published: async () => ({ ...cleaned, dist: { integrity } }),
+    tagSha: async () => (++checks === 1 ? null : 'b'.repeat(40)),
+  });
+  await assert.rejects(
+    runRelease({ ...f.input, action: 'finalize', version: '1.2.3' }, f.io),
+    /tag does not match/,
+  );
+  assert.ok(f.calls.includes('publish'));
+  assert.ok(!f.calls.includes('remove-source'));
+});
+
+test('cleanup failure retries the finalized version without publishing again', async (t) => {
+  let saved = { ...draft };
+  let publishes = 0;
+  let cleanups = 0;
+  const f = await fixture(t, {
+    releases: async () => [saved],
+    published: async () => ({ ...cleaned, dist: { integrity } }),
+    tagSha: async () => (saved.draft ? null : sha),
+    publishDraft: async (release) => {
+      publishes++;
+      saved = { ...release, draft: false };
+      return saved;
+    },
+    removeSource: async (version, source) => {
+      assert.equal(version, '1.2.3');
+      assert.equal(source, sha);
+      assert.equal(saved.draft, false);
+      if (++cleanups === 1) throw new Error('cleanup denied');
+    },
+  });
+  const finalizeInput = { ...f.input, action: 'finalize', version: '1.2.3', sha: 'b'.repeat(40) };
+  await assert.rejects(runRelease(finalizeInput, f.io), /cleanup denied/);
+  assert.equal((await runRelease(finalizeInput, f.io))['jsr-ready'], 'true');
+  assert.equal(publishes, 1);
+  assert.equal(cleanups, 2);
+  assert.ok(!f.calls.includes('stage'));
 });
 
 for (const [name, overrides] of [
@@ -279,6 +356,7 @@ for (const [name, overrides] of [
     const f = await fixture(t, { releases: async () => [draft], ...overrides });
     await assert.rejects(runRelease({ ...f.input, action: 'finalize', version: '1.2.3' }, f.io));
     assert.ok(!f.calls.includes('publish'));
+    assert.ok(!f.calls.includes('remove-source'));
   });
 }
 
@@ -286,6 +364,12 @@ test('verify never reads or mutates release state', async (t) => {
   const f = await fixture(t, {
     releases: async () => {
       throw new Error('verify must not call GitHub');
+    },
+    retainSource: async () => {
+      throw new Error('verify must not retain refs');
+    },
+    removeSource: async () => {
+      throw new Error('verify must not delete refs');
     },
   });
   await runRelease({ ...f.input, action: 'verify' }, f.io);

@@ -43,6 +43,6 @@ Recovery retained the saved package and source throughout. Finalization used the
 
 ## Rollout checkpoint
 
-The pilot demonstrates successful npm staging, provenance, maintainer approval, saved-package verification and GitHub finalization. Before expanding, review the conditional source-ref recovery above and decide whether to document maintainer recovery or add source-ref retention during Stage. The shared helper currently does not retain a source branch automatically.
+The pilot demonstrates successful npm staging, provenance, maintainer approval, saved-package verification and GitHub finalization. Before expanding, review the conditional source-ref recovery above and decide whether to document maintainer recovery or add source-ref retention during Stage. The pilot used a helper without automatic source retention. A [follow-up implementation](../t006-source-ref-retention/verification.md) proposes retention before preparation and conditional cleanup after tag verification.
 
 Expansion remains subject to the pilot review and maintainer approval. Adopt lint-commit and cleanup-package-json first, then review typing and negotiate separately, including their JSR behavior. Personal-repository adoption and compatibility CI changes remain separate phases.
