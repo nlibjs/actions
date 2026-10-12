@@ -34,3 +34,7 @@ Validate real OIDC authentication and provenance signing during changelog's norm
 Validate token permissions for GitHub draft creation, asset upload, and publication, including restrictions when target workflow files differ from the default branch. Do not interpret failures as absence. Individual JSR adoption PRs add release:jsr and its own verification.
 
 R2 does not include caller adoption, publication, or merging.
+
+## R2 review follow-up
+
+All 25 tests pass after adding an unconfirmed-draft retry regression. Receipt-update failure also rejects subsequent stage attempts without resending. Biome, actionlint 1.7.12, workflow contracts, and whitespace checks pass. The helper pin is updated in a separate commit after the helper implementation change. Actual OIDC/provenance publication remains reserved for the pilot.

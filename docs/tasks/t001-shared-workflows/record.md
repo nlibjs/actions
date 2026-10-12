@@ -62,3 +62,10 @@ Share release processing across five nlibjs repositories and support gjbkz perso
 - Plan: explicitly require merge commits to preserve helper SHAs; document manual recovery only after confirming no pending or published npm version; fail retries whose draft has no confirmed staging receipt and no published npm version. Never resend automatically.
 - Evaluate TypeScript separately: Node 26 supports direct execution of erasable types; CI must separately run type checking. No migration requested or performed yet.
 - Validation pending for the review changes.
+
+- Implemented all three review items. Unknown draft retries now fail without sending npm requests; successful receipt and matching published version remain valid no-ops. Manual reset requires confirmed absence of both pending and public npm versions, with source changes explicitly checked.
+- Helper review-fix commit: 97d752460d5f4ad26702c105d4e5d9b6870641df; workflow repinned in a subsequent commit. Merge-commit requirements and the two-PR alternative are documented.
+- Validation: 25 tests passed, including the added unconfirmed-draft regression and npm 11.21.0 tarball dry-run. Biome, actionlint 1.7.12, workflow contracts, and diff whitespace checks passed. Repeat against the final helper pin before pushing.
+- TypeScript recommendation: a separate reviewed change using direct Node 26 execution and strict noEmit type checking; retain runtime manifest/API validation.
+
+- Final helper SHA after formatting: a5969bcedb41e1968f07a01a2c9e3e7c169bbbee. Biome formatting correction applied before the final workflow pin.

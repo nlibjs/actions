@@ -86,7 +86,7 @@ jobs:
           registry-url: https://registry.npmjs.org
       - run: npm install --global npm@11.21.0
       - id: release
-        uses: nlibjs/actions/actions/npm-release@3fb64859ff81c0ee9699aafa75a74acf28d9a070
+        uses: nlibjs/actions/actions/npm-release@a5969bcedb41e1968f07a01a2c9e3e7c169bbbee
         with:
           action: ${{ inputs.action }}
           version: ${{ inputs.version }}
@@ -123,7 +123,7 @@ jobs:
           registry-url: https://registry.npmjs.org
       - run: npm install --global npm@11.21.0
       - id: release
-        uses: nlibjs/actions/actions/npm-release@3fb64859ff81c0ee9699aafa75a74acf28d9a070
+        uses: nlibjs/actions/actions/npm-release@a5969bcedb41e1968f07a01a2c9e3e7c169bbbee
         with:
           action: ${{ inputs.action }}
           version: ${{ inputs.version }}
@@ -161,7 +161,7 @@ jobs:
           registry-url: https://registry.npmjs.org
       - run: npm install --global npm@11.21.0
       - id: release
-        uses: nlibjs/actions/actions/npm-release@3fb64859ff81c0ee9699aafa75a74acf28d9a070
+        uses: nlibjs/actions/actions/npm-release@a5969bcedb41e1968f07a01a2c9e3e7c169bbbee
         with:
           action: ${{ inputs.action }}
           version: ${{ inputs.version }}
@@ -192,7 +192,7 @@ jobs:
           registry-url: https://registry.npmjs.org
       - run: npm install --global npm@11.21.0
       - id: release
-        uses: nlibjs/actions/actions/npm-release@3fb64859ff81c0ee9699aafa75a74acf28d9a070
+        uses: nlibjs/actions/actions/npm-release@a5969bcedb41e1968f07a01a2c9e3e7c169bbbee
         with:
           action: ${{ inputs.action }}
           version: ${{ inputs.version }}
@@ -224,7 +224,7 @@ jobs:
           registry-url: https://registry.npmjs.org
       - run: npm install --global npm@11.21.0
       - id: release
-        uses: nlibjs/actions/actions/npm-release@3fb64859ff81c0ee9699aafa75a74acf28d9a070
+        uses: nlibjs/actions/actions/npm-release@a5969bcedb41e1968f07a01a2c9e3e7c169bbbee
         with:
           action: ${{ inputs.action }}
           version: ${{ inputs.version }}
