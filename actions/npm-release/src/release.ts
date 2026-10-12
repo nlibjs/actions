@@ -24,8 +24,8 @@ export async function resolveSource(raw: RawInputs, io: Runtime) {
     throw new Error('Stage requires the matching stable published Release');
   const sha = await io.tagSha(input.tag);
   if (!sha) throw new Error('Release tag is missing');
-  if (input.event === 'release' && input.sha !== sha)
-    throw new Error('Release event SHA and current tag differ');
+  if (input.sha !== sha)
+    throw new Error('Selected workflow commit and Release tag differ; dispatch on the Release tag');
   return { 'source-sha': sha, tag: input.tag };
 }
 
@@ -110,9 +110,9 @@ export async function runRelease(
       );
       return { ...outputs, submit: 'false' };
     }
-    if (saved.length || !(await io.firstAttempt(tag)))
+    if (saved.some((e) => e.state === 'unknown') || (await io.submissionStarted(tag)))
       throw new Error(
-        'Staging evidence is missing or submission is unconfirmed; inspect npm Staged Packages. Nothing was resent.',
+        'Submission may have started without a successful receipt; inspect npm Staged Packages. Nothing was resent.',
       );
   }
   await io.prepare(input.cwd);

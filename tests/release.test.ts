@@ -53,7 +53,7 @@ async function fixture(t: TestContext, overrides: Partial<Runtime> = {}) {
     tagSha: async () => sha,
     published: async () => null,
     evidence: async () => [],
-    firstAttempt: async () => true,
+    submissionStarted: async () => false,
     prepare: async () => {
       calls.push('prepare');
     },
@@ -83,7 +83,7 @@ test('Verify uses no registry, Release, artifact or submission methods', async (
     tagSha: forbidden,
     published: forbidden,
     evidence: forbidden,
-    firstAttempt: forbidden,
+    submissionStarted: forbidden,
     stage: forbidden,
   });
   const input = { ...f.input, action: 'verify', tag: '', event: 'pull_request' };
@@ -122,7 +122,7 @@ test('a failed or thrown submission leaves an unknown receipt and is never autom
     const receipt = JSON.parse(await readFile(f.path, 'utf8'));
     assert.equal(receipt.state, 'unknown');
     f.io.evidence = async () => [expected, receipt];
-    await assert.rejects(runRelease(f.input, f.io, f.path), /unconfirmed/);
+    await assert.rejects(runRelease(f.input, f.io, f.path), /without a successful receipt/);
   }
 });
 
@@ -150,8 +150,8 @@ test('public npm retries compare saved integrity and never rebuild or resend', a
 });
 
 test('missing, expired, malformed and conflicting evidence stop retries', async (t) => {
-  const f = await fixture(t, { firstAttempt: async () => false });
-  await assert.rejects(runRelease(f.input, f.io, f.path), /missing/);
+  const f = await fixture(t, { submissionStarted: async () => true });
+  await assert.rejects(runRelease(f.input, f.io, f.path), /without a successful receipt/);
   for (const value of [
     null,
     { ...expected, sha: 'b'.repeat(40) },
@@ -233,4 +233,40 @@ test('publishing input policy rejects old operations, arbitrary tags and publish
     { repository: 'example/widget\n' },
   ])
     assert.throws(() => validateInputs({ ...base, ...change }));
+});
+
+test('a failed build can be retried or manually dispatched before submission', async (t) => {
+  const f = await fixture(t, {
+    prepare: async () => {
+      throw new Error('flaky build');
+    },
+  });
+  await assert.rejects(runRelease(f.input, f.io, f.path), /flaky build/);
+  f.io.prepare = async () => {
+    f.calls.push('prepare');
+  };
+  const retry = { ...f.input, event: 'workflow_dispatch' };
+  assert.equal((await runRelease(retry, f.io, f.path)).submit, 'true');
+  f.io.evidence = async () => [expected];
+  assert.equal((await submit(retry, f.io, f.path, '/package.tgz'))['npm-state'], 'staged');
+});
+
+test('an uploaded preparation artifact without a started submission can be rebuilt safely', async (t) => {
+  const f = await fixture(t, { evidence: async () => [expected] });
+  assert.equal((await runRelease(f.input, f.io, f.path)).submit, 'true');
+  assert.ok(f.calls.includes('prepare'));
+  f.io.submissionStarted = async () => true;
+  await assert.rejects(runRelease(f.input, f.io, f.path), /without a successful receipt/);
+});
+
+test('manual publishing resolves only the selected Release commit for accurate provenance', async (t) => {
+  const f = await fixture(t);
+  await assert.rejects(
+    resolveSource({ ...f.input, event: 'workflow_dispatch', sha: 'b'.repeat(40) }, f.io),
+    /dispatch on the Release tag/,
+  );
+  assert.equal(
+    (await resolveSource({ ...f.input, event: 'workflow_dispatch' }, f.io))['source-sha'],
+    sha,
+  );
 });

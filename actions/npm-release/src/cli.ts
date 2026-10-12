@@ -36,6 +36,10 @@ try {
       throw new Error('Invalid event Release ID');
     input.releaseId = release.id;
   }
+  if (input.action === 'stage' && input.sha !== process.env.GITHUB_SHA)
+    throw new Error(
+      'Select the Release tag for workflow dispatch so provenance matches the source',
+    );
   io = await createRuntime({
     repository: input.repository || '',
     actionPath: process.env.COMMON_ACTION_PATH,

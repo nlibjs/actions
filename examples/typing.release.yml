@@ -43,7 +43,7 @@ jobs:
         with:
           action: stage
           tag: ${{ github.event.release.tag_name || inputs.tag }}
-          resolve-only: "true"
+          phase: resolve
         env:
           GH_TOKEN: ${{ github.token }}
   Stage:
@@ -60,7 +60,7 @@ jobs:
       source-sha: ${{ needs.Source.outputs.sha }}
   PublishJsr:
     needs: Source
-    if: (github.event_name == 'release' && !github.event.release.prerelease)
+    if: (github.event_name == 'release' && !github.event.release.prerelease) || inputs.action == 'stage'
     runs-on: ubuntu-latest
     permissions:
       contents: read

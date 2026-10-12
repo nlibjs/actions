@@ -30,7 +30,7 @@ Stage:
 
 Outputs are package-name, version, tag, source-sha, npm-state, and release-url. Verify reports npm-state=unknown without registry or Release lookups. Stage reports staged or published when evidence confirms that state.
 
-The helper action also supports resolve-only=true to resolve a Release tag for parallel jobs. The JSR examples use its source-sha for both destinations; JSR does not depend on npm Stage.
+The helper action also supports phase=resolve to resolve a Release tag for parallel jobs. The JSR examples use its source-sha for both destinations; JSR does not depend on npm Stage.
 
 ## Requirements
 
@@ -63,13 +63,16 @@ Evidence artifacts contain only package identity, Release ID, tag, commit, integ
 | npm stage succeeded; approval pending | Approve in npmjs.com; retries do not resend |
 | npm is public | Stage retry verifies saved integrity and succeeds without rebuilding |
 | Submission failed or its outcome is unknown | Inspect npm Staged Packages and public npm; retries stop without resending |
-| Evidence is missing or expired, including a failed first run | Inspect registry state; retries stop without resending |
+| Preparation failed before submission | Re-run Stage on the same Release tag |
+| Evidence is missing after submission started, or expired | Inspect registry state; retries stop without resending |
 | JSR failed | Re-run its failed job; it verifies existing content or publishes an absent version |
 | Tag moved, evidence conflicts, or a lookup fails | Investigate the affected destination; no automatic repair |
 
-For npm inspection, run the caller's workflow with action=stage and the published tag. Initial submission is restricted to the first Release-event attempt, with no prior matching deployment or evidence. Manual dispatch and reruns never infer permission to submit from public npm absence: pending versions are not visible through that lookup. A missing receipt after successful staging also requires inspection. Once public, matching saved integrity can confirm success.
+For manual Stage, select the published Release tag in **Run workflow**, choose action=stage, and enter the same tag. The selected commit must match the Release source so npm provenance identifies the built commit. Manual dispatch can deploy a Release whose event did not trigger, including one created with GITHUB_TOKEN.
 
-If a pre-submission failure is confirmed, prepare an explicit recovery after checking both pending and public npm state. There is no automatic reset or resubmission path. Keep tags fixed and retain the original source and evidence during inspection.
+Preparation can be retried after lint, tests, build, pack, or evidence upload fails. Before preparing again, inspect prior attempts of the version's named Stage job. If its separate **Submit npm tarball** step started, missing evidence cannot authorize another submission. A successful receipt or matching public integrity allows verification without resending; an unknown outcome requires npm Staged Packages inspection. Keep workflow history and evidence during recovery. Lookup failures stop publishing.
+
+JSR uses the same resolved source and runs independently. Re-run its failed job to recover only JSR. A manual Stage also checks JSR in configured callers; matching existing JSR content is a no-op.
 
 ## Authentication and permissions
 

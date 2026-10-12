@@ -92,30 +92,62 @@ test('PR and unrelated workflow artifacts are ignored; expired trusted artifacts
   }
 });
 
-test('first submission is limited to the initial Release attempt and checks prior runs', async () => {
-  for (const [event, attempt, previous, allowed] of [
-    ['release', '1', [], true],
-    ['release', '2', [], false],
-    ['workflow_dispatch', '1', [], false],
-    ['release', '1', [run], false],
-    ['release', '1', [{ ...run, head_branch: 'main' }], false],
-    ['release', '1', [{ ...run, path: '.github/workflows/other.yml' }], true],
+test('only a prior started submission blocks preparation after missing evidence', async () => {
+  for (const [status, conclusion, blocked] of [
+    ['completed', 'success', true],
+    ['completed', 'failure', true],
+    ['in_progress', null, true],
+    ['completed', 'skipped', false],
+    ['queued', null, false],
   ] as const) {
     const io = await createRuntime({
       repository,
-      env: {
-        ...process.env,
-        GITHUB_EVENT_NAME: event,
-        GITHUB_RUN_ATTEMPT: attempt,
-        GITHUB_RUN_ID: '11',
+      env: { ...process.env, GITHUB_RUN_ID: '11', GITHUB_RUN_ATTEMPT: '2' },
+      fetcher: async (url) => {
+        if (String(url).includes('/workflows/release.yml/runs'))
+          return Response.json({ workflow_runs: [{ ...run, event: 'workflow_dispatch' }] });
+        return Response.json({
+          jobs: [
+            {
+              name: `Stage / Stage ${tag}`,
+              run_attempt: 1,
+              steps: [{ name: 'Submit npm tarball', status, conclusion }],
+            },
+          ],
+        });
       },
-      fetcher: async (url) =>
-        String(url).includes('/actions/runs?')
-          ? Response.json({ workflow_runs: [...previous, { ...run, id: 11 }] })
-          : Response.json({ object: { type: 'commit', sha } }),
     });
-    assert.equal(await io.firstAttempt(tag), allowed);
+    assert.equal(await io.submissionStarted(tag), blocked);
   }
+  const io = await createRuntime({
+    repository,
+    env: { ...process.env, GITHUB_RUN_ID: '10', GITHUB_RUN_ATTEMPT: '2' },
+    fetcher: async (url) =>
+      String(url).includes('/workflows/')
+        ? Response.json({ workflow_runs: [run] })
+        : Response.json({
+            jobs: [
+              {
+                name: `Stage ${tag}`,
+                run_attempt: 2,
+                steps: [{ name: 'Submit npm tarball', status: 'in_progress' }],
+              },
+              {
+                name: 'Stage v1.2.4',
+                run_attempt: 1,
+                steps: [{ name: 'Submit npm tarball', status: 'completed' }],
+              },
+              {
+                name: `Stage ${tag}`,
+                run_attempt: 1,
+                steps: [
+                  { name: 'Prepare npm package', status: 'completed', conclusion: 'failure' },
+                ],
+              },
+            ],
+          }),
+  });
+  assert.equal(await io.submissionStarted(tag), false);
 });
 
 test('artifact lookup permission and network errors never become absence', async () => {

@@ -134,16 +134,36 @@ export async function createRuntime({
       }
       throw new Error('Too many nested annotated tags');
     },
-    async firstAttempt(tag) {
-      if (env.GITHUB_EVENT_NAME !== 'release' || env.GITHUB_RUN_ATTEMPT !== '1') return false;
-      const runs = await pages('actions/runs?event=release', 'workflow_runs');
-      const sha = await io.tagSha(tag);
-      return !runs.some(
-        (run) =>
-          (run.head_branch === tag || run.head_sha === sha) &&
-          String(run.path).split('@')[0] === '.github/workflows/release.yml' &&
-          String(run.id) !== env.GITHUB_RUN_ID,
-      );
+    async submissionStarted(tag) {
+      const runs = await pages('actions/workflows/release.yml/runs', 'workflow_runs');
+      for (const run of runs.filter((r) =>
+        ['release', 'workflow_dispatch'].includes(String(r.event)),
+      )) {
+        const jobs = await pages(`actions/runs/${run.id}/jobs?filter=all`, 'jobs');
+        for (const job of jobs) {
+          if (
+            String(run.id) === env.GITHUB_RUN_ID &&
+            String(job.run_attempt) === env.GITHUB_RUN_ATTEMPT
+          )
+            continue;
+          if (job.name !== `Stage ${tag}` && !String(job.name).endsWith(` / Stage ${tag}`))
+            continue;
+          if (!Array.isArray(job.steps))
+            throw new Error('Missing submission step history; inspect npm');
+          if (
+            job.steps.some((value) => {
+              const step = record(value, 'job step');
+              return (
+                step.name === 'Submit npm tarball' &&
+                step.conclusion !== 'skipped' &&
+                step.status !== 'queued'
+              );
+            })
+          )
+            return true;
+        }
+      }
+      return false;
     },
     async evidence(tag) {
       const artifacts = await pages('actions/artifacts', 'artifacts');

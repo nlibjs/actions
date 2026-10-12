@@ -35,6 +35,19 @@ for (const [name, value] of Object.entries(record(workflow.jobs, 'jobs'))) {
   assert.deepEqual(job.permissions, name === 'Verify' ? { contents: 'read' } : undefined);
   assert.equal(Boolean(job.environment), name === 'ProtectedStage');
   assert.ok(Array.isArray(job.steps));
+  if (name !== 'Verify') {
+    // biome-ignore lint/suspicious/noTemplateCurlyInString: GitHub expression.
+    assert.equal(job.name, 'Stage ${{ inputs.tag }}');
+    const submit = job.steps
+      .map((s) => record(s, 'step'))
+      .find((s) => s.name === 'Submit npm tarball');
+    assert.equal(record(submit?.with, 'submit options').phase, 'submit');
+    assert.ok(
+      job.steps.findIndex((s) => record(s, 'step').name === 'Persist npm submission evidence') <
+        job.steps.findIndex((s) => record(s, 'step').name === 'Submit npm tarball'),
+    );
+  }
+
   for (const value of job.steps) {
     const step = record(value, 'step');
     if (step.uses) assert.match(String(step.uses), /@[a-f0-9]{40}$/);
@@ -43,7 +56,7 @@ for (const [name, value] of Object.entries(record(workflow.jobs, 'jobs'))) {
 const action = await yaml('actions/npm-release/action.yml');
 assert.deepEqual(
   Object.keys(record(action.outputs, 'outputs')).sort(),
-  Object.keys(outputs).sort(),
+  [...Object.keys(outputs), 'submit', 'tarball'].sort(),
 );
 const actionSteps = record(action.runs, 'runs').steps;
 assert.ok(Array.isArray(actionSteps));
@@ -93,7 +106,6 @@ for (const file of [
       .map((s) => record(s, 'step'))
       .find((s) => String(s.uses).startsWith('actions/checkout'));
     assert.equal(record(checkout?.with, 'checkout').ref, source);
-    assert.ok(!String(jsr.if).includes("inputs.action == 'stage'"));
   }
 }
 const validation = await yaml('.github/workflows/validate.yml');

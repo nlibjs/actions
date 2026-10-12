@@ -13,7 +13,7 @@ Copy a caller to `.github/workflows/release.yml`. Replace REPLACE_WITH_COMMON_WO
 
 Publish a stable GitHub Release at the intended commit, matching the package.json version and copying its CHANGELOG notes. npm is staged automatically; approve it in npmjs.com. See the [common release and recovery procedure](../README.md#release-procedure).
 
-Manual dispatch defaults to verify. Select stage and a published Release tag to inspect/recover npm state; dispatch does not submit a new package. npm submissions require the initial published Release event. Prereleases are rejected explicitly because published events also include prereleases.
+Manual dispatch defaults to verify. To deploy or retry a published Release, select its tag in **Run workflow**, choose stage, and enter the same tag. Pre-submission failures can be retried; missing evidence after a started submission requires registry inspection. Prereleases are rejected explicitly because published events also include prereleases.
 
 ## JSR preparation
 

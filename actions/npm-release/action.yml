@@ -10,13 +10,22 @@ inputs:
   cleanup-source:
     description: registry or local
     default: registry
-  resolve-only:
-    description: Resolve the Release source without preparing or publishing
-    default: "false"
+  phase:
+    description: prepare, resolve or submit
+    default: prepare
+  tarball:
+    description: Inspected tarball for the submit phase
+    default: ""
   source-sha:
     description: Expected resolved source for parallel registry jobs
     default: ""
 outputs:
+  submit:
+    description: Preparation permits submission
+    value: ${{ steps.prepare.outputs.submit }}
+  tarball:
+    description: Inspected tarball path
+    value: ${{ steps.prepare.outputs.tarball }}
   package-name:
     description: Release package-name
     value: ${{ steps.prepare.outputs.package-name }}
@@ -39,6 +48,7 @@ runs:
   using: composite
   steps:
     - id: source
+      if: inputs.phase != 'submit'
       shell: bash
       run: node "$COMMON_ACTION_PATH/src/cli.ts"
       env:
@@ -48,26 +58,26 @@ runs:
         RELEASE_CLEANUP_SOURCE: ${{ inputs.cleanup-source }}
         RELEASE_PHASE: resolve
     - name: Check parallel source
-      if: inputs.source-sha != ''
+      if: inputs.phase != 'submit' && inputs.source-sha != ''
       shell: bash
       env:
         EXPECTED_SHA: ${{ inputs.source-sha }}
         RESOLVED_SHA: ${{ steps.source.outputs.source-sha }}
       run: test "$EXPECTED_SHA" = "$RESOLVED_SHA"
     - name: Install locked cleanup tooling
-      if: inputs.resolve-only != 'true'
+      if: inputs.phase == 'prepare'
       shell: bash
       run: npm ci --prefix "$COMMON_ACTION_PATH" --ignore-scripts --no-audit --no-fund
       env:
         COMMON_ACTION_PATH: ${{ github.action_path }}
     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-      if: inputs.resolve-only != 'true'
+      if: inputs.phase == 'prepare'
       with:
         ref: ${{ steps.source.outputs.source-sha }}
         fetch-depth: 0
         persist-credentials: false
     - id: prepare
-      if: inputs.resolve-only != 'true'
+      if: inputs.phase == 'prepare'
       shell: bash
       run: node "$COMMON_ACTION_PATH/src/cli.ts"
       env:
@@ -77,16 +87,8 @@ runs:
         RELEASE_CLEANUP_SOURCE: ${{ inputs.cleanup-source }}
         RELEASE_PHASE: prepare
         RELEASE_SOURCE_SHA: ${{ steps.source.outputs.source-sha }}
-    - id: evidence
-      if: steps.prepare.outputs.submit == 'true'
-      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
-      with:
-        name: npm-${{ inputs.tag }}-${{ github.run_id }}-${{ github.run_attempt }}-prepared
-        path: ${{ runner.temp }}/npm-evidence/evidence.json
-        if-no-files-found: error
-        retention-days: 0
     - id: submit
-      if: steps.prepare.outputs.submit == 'true'
+      if: inputs.phase == 'submit'
       shell: bash
       run: node "$COMMON_ACTION_PATH/src/cli.ts"
       env:
@@ -95,13 +97,5 @@ runs:
         RELEASE_TAG: ${{ inputs.tag }}
         RELEASE_CLEANUP_SOURCE: ${{ inputs.cleanup-source }}
         RELEASE_PHASE: submit
-        RELEASE_SOURCE_SHA: ${{ steps.source.outputs.source-sha }}
-        RELEASE_TARBALL: ${{ steps.prepare.outputs.tarball }}
-    - id: receipt
-      if: always() && steps.submit.outcome != 'skipped'
-      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
-      with:
-        name: npm-${{ inputs.tag }}-${{ github.run_id }}-${{ github.run_attempt }}-result
-        path: ${{ runner.temp }}/npm-evidence/evidence.json
-        if-no-files-found: error
-        retention-days: 0
+        RELEASE_SOURCE_SHA: ${{ inputs.source-sha }}
+        RELEASE_TARBALL: ${{ inputs.tarball }}

@@ -76,7 +76,7 @@ export interface Runtime {
   tagSha(tag: string): Promise<string | null>;
   published(name: string, version: string): Promise<PackageMetadata | null>;
   evidence(tag: string): Promise<Evidence[]>;
-  firstAttempt(tag: string): Promise<boolean>;
+  submissionStarted(tag: string): Promise<boolean>;
   prepare(cwd: string): Promise<void>;
   cleanup(cwd: string, source: CleanupSource): Promise<void>;
   pack(cwd: string): Promise<PackedTarball>;
