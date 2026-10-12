@@ -24,3 +24,5 @@ Strict TypeScript, Biome, workflow/caller contracts, actionlint and whitespace c
 ## Deployment
 
 Commit helper changes first, then pin all five workflow operation jobs to that existing implementation commit. Preserve both commits in shared main before updating the changelog caller. Confirm source-ref creation/deletion with the caller's GitHub token and review the updated workflow before expanding to additional repositories.
+
+Helper implementation commit: `70dd80ae972e812efcc9606d0ec5d514c8be3982`. All five workflow jobs pin this existing commit in the subsequent workflow commit.
