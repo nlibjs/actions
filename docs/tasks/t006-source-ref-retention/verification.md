@@ -26,3 +26,7 @@ Strict TypeScript, Biome, workflow/caller contracts, actionlint and whitespace c
 Commit helper changes first, then pin all five workflow operation jobs to that existing implementation commit. Preserve both commits in shared main before updating the changelog caller. Confirm source-ref creation/deletion with the caller's GitHub token and review the updated workflow before expanding to additional repositories.
 
 Helper implementation commit: `70dd80ae972e812efcc9606d0ec5d514c8be3982`. All five workflow jobs pin this existing commit in the subsequent workflow commit.
+
+## Hosted source-ref verification
+
+[Run 38245008516](https://github.com/nlibjs/actions/actions/runs/38245008516) passed against production adapters with the GitHub token and contents write. It created and reused a temporary source ref, deleted it through authenticated Git with the saved-SHA lease, and verified absent-ref cleanup retries. The ref and temporary validation branch are deleted. No npm staging or Release publication was performed.
