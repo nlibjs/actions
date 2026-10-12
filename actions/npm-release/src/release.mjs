@@ -51,14 +51,20 @@ export async function runRelease(raw, io) {
       const saved = await inspectAssets(release, input.repository, original.version, io);
       if (published && published.dist?.integrity !== saved.integrity)
         throw new Error('Published npm integrity differs from the draft tarball');
+      const confirmed = release.body?.includes('\n\nStaging succeeded.');
+      if (!published && !confirmed) {
+        io.summary(
+          `Staging is unconfirmed for ${tag}. The draft is retained and nothing was re-sent. Inspect npm Staged Packages and the public registry before recovery.`,
+        );
+        throw new Error('npm staging result is unknown; inspect npm and the saved draft');
+      }
       io.summary(
         `No-op: existing draft for ${tag}; no re-staging. ${finalizeInstructions(original.version)} If the prior command failed, check npm Staged Packages before any retry.`,
       );
-      const confirmed = release.body?.includes('\n\nStaging succeeded.');
       return output(
         original,
         saved.sha,
-        published ? 'published' : confirmed ? 'staged' : 'unknown',
+        published ? 'published' : 'staged',
         release,
       );
     }

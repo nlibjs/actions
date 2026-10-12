@@ -55,3 +55,10 @@ Share release processing across five nlibjs repositories and support gjbkz perso
 - Translate repository README, design, plan, task record, verification results, examples guide, and the PR body into English. Preserve implementation behavior and approved constraints.
 - Keep future repository documents, commit messages, PRs, and comments in English. Chat communication remains Japanese.
 - Check all changed document links/code fences, scan tracked text for remaining Japanese, and confirm that only documentation changed.
+
+## R2 review follow-up
+
+- Review: https://github.com/nlibjs/actions/pull/1#pullrequestreview-5486308407.
+- Plan: explicitly require merge commits to preserve helper SHAs; document manual recovery only after confirming no pending or published npm version; fail retries whose draft has no confirmed staging receipt and no published npm version. Never resend automatically.
+- Evaluate TypeScript separately: Node 26 supports direct execution of erasable types; CI must separately run type checking. No migration requested or performed yet.
+- Validation pending for the review changes.

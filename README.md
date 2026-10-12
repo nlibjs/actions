@@ -60,7 +60,8 @@ An Actions run does not wait across the approval period. finalize uses the draft
 | State | Behavior |
 |---|---|
 | npm version is public and its version tag exists | stage succeeds as a no-op; dependency-only updates do not fail |
-| A draft exists | Do not re-stage; direct the maintainer to npm inspection, approval, or finalize |
+| A draft exists with a successful staging receipt or a matching published npm version | Succeed without re-staging; direct the maintainer to approval or finalize |
+| A draft exists without a successful receipt and npm is not public | Fail with an unknown outcome; retain the draft and never re-stage automatically |
 | No draft exists, and only npm or the tag exists | Stop with an inconsistency |
 | Drafts or assets are duplicated or incomplete | Stop and identify the candidates or missing assets |
 | Staging exits nonzero and its outcome is unknown | Retain the draft; do not resend until a maintainer checks npm |
@@ -69,6 +70,10 @@ An Actions run does not wait across the approval period. finalize uses the draft
 | A pending run is replaced and stage never runs | Confirm the target version is on main, then run stage manually |
 
 finalize also inspects published Releases, but does not automatically modify historical Releases without the new assets. Resolve existing tags to their commit SHA. Let GitHub create a missing tag when publishing the draft, then verify its SHA afterward.
+
+After a failed stage, inspect npm Staged Packages and the public registry for the exact package/version. If a pending version exists, approve it and run finalize; if a public version exists, run finalize to verify it against the saved tarball. An unconfirmed draft keeps subsequent stage runs failing until the published version can be verified. This also applies if staging succeeded but saving its receipt failed.
+
+Only after a maintainer confirms that neither a pending nor a public version exists may they reset a definitively failed attempt (for example, a rejected Trusted Publisher configuration). Record the error and the draft's target SHA, save its assets for diagnosis, fix the cause, then manually delete that draft and run stage again. The new attempt rebuilds the current main; verify its version and changes against the recorded SHA before proceeding. If npm's state is uncertain, retain the draft and investigate instead of resetting. There is no automatic deletion or retry.
 
 Find drafts by paging through the authenticated release list. Stop if multiple Releases share the tag; do not choose the newest automatically. Persist only Release tag_name/target_commitish, package.tgz, and package.integrity. There is no custom record schema or stage-ID-dependent automatic recovery.
 
@@ -105,6 +110,8 @@ Pin the helper action to a full commit SHA inside the workflow. Update it in two
 1. Commit the helper action change as commit A.
 2. Create commit B that pins the workflow's helper reference to A, and validate the combination.
 3. Open caller PRs updating their shared workflow reference to B.
+
+Merge this implementation PR and subsequent helper updates using **Create a merge commit**. Do not squash or rebase: the workflow pins the original helper commit A, which must remain in main's history. Before updating callers, verify that A is an ancestor of main and that the chosen workflow commit pins A. If repository policy requires squash or rebase, first merge the helper change, then create a separate workflow update pinned to the resulting main commit and review it before caller adoption.
 
 If needed, revert a caller's reference to an earlier SHA. Do not roll back published versions; recover only the failed publishing destination.
 

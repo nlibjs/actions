@@ -160,15 +160,22 @@ test('successful npm stage followed by receipt failure remains visibly successfu
   });
   await assert.rejects(runRelease(f.input, f.io), /receipt failure/);
   assert.match(f.summaries.join('\n'), /npm staging succeeded/);
-  const again = await runRelease(f.input, f.io);
-  assert.equal(again['github-state'], 'draft');
+  await assert.rejects(runRelease(f.input, f.io), /unknown/);
   assert.equal(f.calls.filter((c) => c === 'stage').length, 1);
 });
 
 test('an existing draft is never sent again', async (t) => {
-  const f = await fixture(t, { releases: async () => [draft] });
+  const f = await fixture(t, {
+    releases: async () => [{ ...draft, body: '\n\nStaging succeeded.' }],
+  });
   const result = await runRelease(f.input, f.io);
   assert.equal(result['source-sha'], sha);
+  assert.deepEqual(f.calls, []);
+});
+
+test('an unconfirmed draft fails retries without resending', async (t) => {
+  const f = await fixture(t, { releases: async () => [draft] });
+  await assert.rejects(runRelease(f.input, f.io), /unknown/);
   assert.deepEqual(f.calls, []);
 });
 
