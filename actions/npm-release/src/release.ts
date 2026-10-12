@@ -180,7 +180,10 @@ async function inspectAssets(release: Release, repository: string, version: stri
 
 async function finalize(input: ReleaseInputs, io: Runtime): Promise<ReleaseOutputs> {
   const release = selectRelease(await io.releases(), `v${input.version}`);
-  if (!release) throw new Error('No saved release for this version; stage a new version first');
+  if (!release)
+    throw new Error(
+      'No saved release with the expected tag; inspect draft tags and saved assets before recovery. Do not re-stage blindly.',
+    );
   const saved = await inspectAssets(release, input.repository, input.version, io);
   const published = await io.published(saved.pkg.name, input.version);
   if (!published) throw new Error('npm version is not public yet; approve it before finalize');

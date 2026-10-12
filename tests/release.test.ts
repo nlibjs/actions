@@ -352,3 +352,42 @@ test('permission 403 from GitHub is not treated as missing release', async () =>
   });
   await assert.rejects(io.releases(), /permissions/);
 });
+
+test('receipt updates and publication preserve a draft tag before its Git ref exists', async () => {
+  let saved = { ...draft };
+  const io = await createRuntime({
+    repository,
+    fetcher: async (_request, options) => {
+      assert.equal(options?.method, 'PATCH');
+      const patch = JSON.parse(String(options.body));
+      // Reproduce GitHub's behavior for a draft whose version tag is not created yet.
+      saved = { ...saved, ...patch, tag_name: patch.tag_name ?? 'untagged-placeholder' };
+      return Response.json(saved);
+    },
+  });
+  await io.updateBody(draft, 'Staging succeeded.');
+  assert.equal(saved.tag_name, draft.tag_name);
+  assert.equal(saved.target_commitish, sha);
+  assert.equal(saved.draft, true);
+  const published = await io.publishDraft(saved);
+  assert.equal(published.tag_name, draft.tag_name);
+  assert.equal(published.target_commitish, sha);
+  assert.equal(published.draft, false);
+});
+
+test('release PATCH responses must retain the saved identity and requested state', async () => {
+  for (const change of [
+    { id: 2 },
+    { tag_name: 'untagged-placeholder' },
+    { target_commitish: 'b'.repeat(40) },
+    { draft: false },
+  ]) {
+    const io = await createRuntime({
+      repository,
+      fetcher: async () => Response.json({ ...draft, ...change }),
+    });
+    await assert.rejects(io.updateBody(draft, 'Receipt'), /saved identity/);
+  }
+  const io = await createRuntime({ repository, fetcher: async () => Response.json(draft) });
+  await assert.rejects(io.publishDraft(draft), /publication state/);
+});

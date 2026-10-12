@@ -105,6 +105,25 @@ export async function createRuntime({
       body: JSON.stringify(payload),
     });
 
+  const updateRelease = async (release: Release, changes: { body?: string; draft?: boolean }) => {
+    // GitHub can replace an uncreated draft tag with `untagged-*` when a PATCH omits it.
+    const updated = githubRelease(
+      await mutate(`${apiBase}/releases/${release.id}`, 'PATCH', {
+        ...changes,
+        tag_name: release.tag_name,
+        target_commitish: release.target_commitish,
+      }),
+    );
+    if (
+      updated.id !== release.id ||
+      updated.tag_name !== release.tag_name ||
+      updated.target_commitish !== release.target_commitish ||
+      updated.draft !== (changes.draft ?? release.draft)
+    )
+      throw new Error('GitHub Release update changed the saved identity or publication state');
+    return updated;
+  };
+
   const io: Runtime = {
     async releases() {
       const releases: Release[] = [];
@@ -263,15 +282,10 @@ export async function createRuntime({
       );
     },
     async updateBody(release, body) {
-      await mutate(`${apiBase}/releases/${release.id}`, 'PATCH', { body });
+      await updateRelease(release, { body });
     },
     async publishDraft(release) {
-      return githubRelease(
-        await mutate(`${apiBase}/releases/${release.id}`, 'PATCH', {
-          draft: false,
-          target_commitish: release.target_commitish,
-        }),
-      );
+      return updateRelease(release, { draft: false });
     },
     summary(message) {
       console.log(message);
