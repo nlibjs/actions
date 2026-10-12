@@ -27,6 +27,6 @@ The tarball staging test uses npm 11.21.0 with `--dry-run` and a local registry 
 
 ## Helper pin and merge procedure
 
-Commit the implementation as A, then create a separate commit B pinning all five helper references in `npm-release.yml` to A. Check that A contains the `.ts` entry point and source, is an ancestor of B, and that B pins A. Open the follow-up PR against main and use **Create a merge commit** to retain A. After merging, verify that A is an ancestor of main before proposing B to callers. The README documents the alternative two-PR process if repository policy requires squash or rebase.
+Implementation commit A is `ca360dbda6c47172efe9f06fee633b7e5f524609`. The subsequent commit B pins all five helper references in `npm-release.yml` to A. Check that A contains the `.ts` entry point and source, is an ancestor of B, and that B pins A. Open the follow-up PR against main and use **Create a merge commit** to retain A. After merging, verify that A is an ancestor of main before proposing B to callers. The README documents the alternative two-PR process if repository policy requires squash or rebase.
 
 Technical review and the user's merge decision remain pending. Real OIDC/provenance validation belongs to the pilot release described in the shared workflow plan.
