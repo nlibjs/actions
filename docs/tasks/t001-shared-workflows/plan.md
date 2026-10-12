@@ -6,7 +6,7 @@ Status: changelog's 0.4.1 pilot and adoption in lint-commit and cleanup-package-
 
 | Phase | Deliverable | Condition to proceed |
 |---|---|---|
-| Revised design review | Release-triggered npm/JSR lifecycle, retry interface, and persistence decision | Technical review and maintainer approval |
+| Revised design review | Release-triggered npm/JSR lifecycle, retry interface, and evidence retention | Technical review and maintainer approval |
 | Shared implementation | Workflow, helper, caller examples, and common README | Validation and reviewed PR merged |
 | Changelog migration | Release-triggered caller pinned to the new implementation | Read-only checks pass; pending old attempts resolved |
 | Normal release pilot | GitHub Release starts npm staging; maintainer approves npm | Source, provenance, tarball integrity, and retry behavior verified |
@@ -15,11 +15,11 @@ Status: changelog's 0.4.1 pilot and adoption in lint-commit and cleanup-package-
 | Personal repository adoption | Selected gjbkz repository | Owner-independent reuse verified |
 | Compatibility CI work | Separate CI PRs | Existing coverage and required checks retained |
 
-Codex prepares implementations, verification, and review fixes. Claude performs technical review; the maintainer shares review material, approves and merges PRs, publishes GitHub Releases, and approves npm with 2FA. Provide one concrete maintainer action at a time.
+Codex prepares implementations, verification, and review fixes. Claude performs technical review; the maintainer shares review material, approves and merges PRs, publishes GitHub Releases, and approves npm with 2FA.
 
 ## Next implementation work
 
-1. Resolve persistence for tarballs and staging receipts without mutating immutable published Releases. Specify retention, expiry handling, and recovery for uncertain submissions.
+1. Persist expected integrity before submission and the staging result afterward as workflow artifacts with maximum permitted retention. Missing or expired evidence reports registry state without resending; uncertain pending state requires maintainer inspection.
 2. Implement `release: published` source validation and tag-based manual retries. Preserve read-only Verify and remove Finalize from the new interface.
 3. Remove draft/Release publication and temporary source-ref management from the new path. Keep historical pinned implementations usable for existing pending attempts.
 4. Run npm Stage and caller JSR jobs in parallel from the same resolved tag SHA. Validate registry metadata and existing content independently.
@@ -29,7 +29,7 @@ Caller documentation cleanup is prepared separately in changelog #560, lint-comm
 
 ## Validation
 
-- Reject draft/prerelease, tag/version mismatch, moved tags, invalid metadata, and unauthorized publishing events.
+- Reject draft/prerelease explicitly, including prereleases delivered by `release: published`; reject tag/version mismatch, moved tags, invalid metadata, and unauthorized publishing events.
 - Confirm both destinations use the same tag commit even when main advances.
 - Verify npm provenance, mandatory registry/local cleanup, and consumer fields in the actual tarball.
 - Test pending/public/unknown npm states and failures between submission and receipt persistence. Never resend automatically after an uncertain outcome.

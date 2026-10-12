@@ -4,7 +4,7 @@ Status: revised design; implementation and caller migration are pending. The dep
 
 ## Release lifecycle
 
-1. A maintainer publishes a stable GitHub Release with a version tag.
+1. A maintainer publishes a stable GitHub Release with a `v<package.json version>` tag at the intended source commit, copying the matching CHANGELOG section into the Release notes.
 2. The caller's `release: published` event starts npm staging and, where configured, JSR publishing as independent jobs.
 3. A maintainer approves the staged npm version with 2FA on npmjs.com.
 
@@ -32,26 +32,26 @@ Serialize deployment attempts for the same Release while allowing npm and JSR jo
 
 ## Persistence and recovery
 
-Create and inspect one npm tarball, save it and its integrity before submission, and stage those exact bytes with provenance. Bind saved state to the Release ID, tag, resolved SHA, and package identity. Persist the successful staging receipt; a stage ID is optional.
+Create and inspect one npm tarball and stage those exact bytes with provenance. Before submission, persist its expected integrity in a workflow artifact bound to the Release ID, tag, resolved SHA, and package identity. Save the staging result afterward; a stage ID is optional. Retain artifacts for the maximum period allowed by repository policy. The tarball itself is not persisted.
 
-Published immutable Releases cannot accept new assets. Choose and validate storage for tarballs and receipts, including retention and recovery after artifact expiry, before implementation approval. Missing saved evidence stops automatic retries. An immutable Release must remain supported without editing its body or assets.
+Retries use the saved integrity and staging receipt to verify public npm content or direct the maintainer to pending-version approval. If evidence is missing or expired, report the public registry state and require inspection of npm Staged Packages; never resend. Public absence does not prove that no pending version exists. Release bodies and assets remain unchanged, including for immutable Releases.
 
 | Destination state | Recovery |
 |---|---|
 | npm stage succeeded; approval pending | Approve in npmjs.com; do not submit again |
-| npm is public | Compare published integrity with the saved tarball; matching content succeeds |
+| npm is public | Compare published integrity with the saved expected integrity; matching content succeeds |
 | npm submission outcome is unknown | Inspect pending/public state; do not automatically resend |
 | JSR version exists | Verify source content and exports; matching content succeeds |
 | JSR version is absent | Publish the validated source with the existing CLI |
 | Lookup fails, content conflicts, or the tag moves | Stop the affected destination and report the mismatch |
 
-Tag existence identifies the source, not completion of registry publishing. Treat only a definitive missing-version response as absence. Retrying JSR must not resend npm. No deployment step creates or publishes a GitHub Release, creates a version tag, or maintains temporary source branches.
+Tag existence identifies the source, not completion of registry publishing. Treat only a definitive missing-version response as public absence; npm pending state still requires a receipt or maintainer inspection. Retrying JSR must not resend npm. No deployment step creates or publishes a GitHub Release, creates a version tag, or maintains temporary source branches.
 
 npm approval completes npm publication. Public-integrity confirmation is a read-only check, not a required manual lifecycle operation. Any automated post-approval monitor needs a separate scheduling decision.
 
 ## Permissions and repository settings
 
-Verify uses contents: read. Publishing needs id-token: write and the minimum GitHub permission required by the chosen persistence mechanism. Validate narrow permissions through GitHub's nested workflow checks, including skipped jobs.
+Verify uses contents: read. npm staging uses contents: read and id-token: write; reading artifacts from earlier attempts also needs actions: read. Validate artifact access and preservation under these permissions. Validate narrow permissions through GitHub's nested workflow checks, including skipped jobs.
 
 Configure npm Trusted Publisher for the caller owner/repository/release.yml/environment. Retain deployment environments and their protection rules; each npm staging attempt uses one protected job. Verify needs no deployment approval.
 
