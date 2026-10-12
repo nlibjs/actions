@@ -53,7 +53,7 @@ jobs:
           registry-url: https://registry.npmjs.org
       - run: npm install --global npm@11.21.0
       - id: release
-        uses: nlibjs/actions/actions/npm-release@70dd80ae972e812efcc9606d0ec5d514c8be3982
+        uses: nlibjs/actions/actions/npm-release@2d5dc9c0f9a7dd94e35691b4353f42e0895f54ec
         with:
           action: ${{ inputs.action }}
           tag: ${{ inputs.tag }}
@@ -80,7 +80,7 @@ jobs:
           registry-url: https://registry.npmjs.org
       - run: npm install --global npm@11.21.0
       - id: release
-        uses: nlibjs/actions/actions/npm-release@70dd80ae972e812efcc9606d0ec5d514c8be3982
+        uses: nlibjs/actions/actions/npm-release@2d5dc9c0f9a7dd94e35691b4353f42e0895f54ec
         with:
           action: ${{ inputs.action }}
           tag: ${{ inputs.tag }}
@@ -108,7 +108,7 @@ jobs:
           registry-url: https://registry.npmjs.org
       - run: npm install --global npm@11.21.0
       - id: release
-        uses: nlibjs/actions/actions/npm-release@70dd80ae972e812efcc9606d0ec5d514c8be3982
+        uses: nlibjs/actions/actions/npm-release@2d5dc9c0f9a7dd94e35691b4353f42e0895f54ec
         with:
           action: ${{ inputs.action }}
           tag: ${{ inputs.tag }}
