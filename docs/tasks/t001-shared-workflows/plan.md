@@ -1,68 +1,48 @@
 # Shared workflow implementation and review plan
 
-Status (2026-10-12): R1–R3 and the changelog 0.4.1 pilot release are complete. npm provenance, saved package integrity, GitHub Release publication and the final source tag are verified. R4 review covers the [pilot results](../t005-changelog-pilot/verification.md), including conditional source-ref recovery before expanding to other callers.
+Status: changelog's 0.4.1 pilot and adoption in lint-commit and cleanup-package-json are complete. Further adoption is paused for the Release-triggered lifecycle in [design.md](design.md).
 
-Centralize release processing, pilot it in changelog, then roll out to the other four repositories and a selected gjbkz repository. Codex implements, validates, and revises; Claude performs technical review; the user makes final decisions and merges. The user shares materials with Claude. Each checkpoint includes a design or PR, changes, verification evidence, and unresolved items. Proceed only within the reviewed scope and do not merge all callers at once.
+## Checkpoints
 
-## Responsibilities and checkpoints
+| Phase | Deliverable | Condition to proceed |
+|---|---|---|
+| Revised design review | Release-triggered npm/JSR lifecycle, retry interface, and evidence retention | Technical review and maintainer approval |
+| Shared implementation | Workflow, helper, caller examples, and common README | Validation and reviewed PR merged |
+| Changelog migration | Release-triggered caller pinned to the new implementation | Read-only checks pass; pending old attempts resolved |
+| Normal release pilot | GitHub Release starts npm staging; maintainer approves npm | Source, provenance, tarball integrity, and retry behavior verified |
+| Existing caller migration | Separate lint-commit and cleanup-package-json PRs | Review, merge, and verify each caller |
+| JSR caller adoption | Separate typing and negotiate PRs | Parallel publishing and independent recovery verified |
+| Personal repository adoption | Selected gjbkz repository | Owner-independent reuse verified |
+| Compatibility CI work | Separate CI PRs | Existing coverage and required checks retained |
 
-| Phase | Codex | User | Condition to proceed |
-|---|---|---|---|
-| R1 design review | Prepare design/caller examples and address findings | Decide publishing order and interface after technical review | Design agreed |
-| Create shared repository | Move plan/design/record after creation | Create public nlibjs/actions | Write access and Actions settings available |
-| R2 shared implementation PR | Workflow, helper, README, and fixture validation | Review and decide whether to merge | State/recovery/permission checks pass |
-| R3 changelog adoption PR | Pinned caller, cleanup, and package content comparison | Review/merge and confirm npm authentication settings | Nonpublishing checks and contents agreed |
-| Pilot normal release | Assist with approved stage, results, and fixes | Confirm release, approve npm with 2FA, and start finalize | npm/GitHub/persisted package consistency confirmed |
-| R4 pilot results review | Present results and recovery procedure | Review results | Rollout to remaining callers approved |
-| Remaining caller PRs | lint-commit/cleanup first, then typing/negotiate separately | Review/merge each PR and configure environment/authentication as needed | Compare contents and verify each repository's differences |
-| R5 personal repository PR | Adapt and verify the selected repository | Select repository, configure it, and review | Owner-independent reuse confirmed |
-| R6 CI PRs | Separate Lint/Node CI changes | Review and update required checks if needed | Existing coverage and required checks retained |
+Codex prepares implementations, verification, and review fixes. Claude performs technical review; the maintainer shares review material, approves and merges PRs, publishes GitHub Releases, and approves npm with 2FA.
 
-Repository creation is assigned to the user; the GitHub connector has no repository creation tool. Preparation can proceed beforehand. An initial README is optional; use main as the default branch. Public visibility supports public nlibjs callers and gjbkz reuse.
+## Next implementation work
 
-Provide concrete values and instructions immediately before user configuration tasks. Do not request secret values in chat; register them directly in the caller. The user owns npm/2FA/environment configuration while Codex assists.
+1. Persist expected integrity before submission and the staging result afterward as workflow artifacts with maximum permitted retention. Missing or expired evidence reports registry state without resending; uncertain pending state requires maintainer inspection.
+2. Implement `release: published` source validation and tag-based manual retries. Preserve read-only Verify and remove Finalize from the new interface.
+3. Remove draft/Release publication and temporary source-ref management from the new path. Keep historical pinned implementations usable for existing pending attempts.
+4. Run npm Stage and caller JSR jobs in parallel from the same resolved tag SHA. Validate registry metadata and existing content independently.
+5. Update examples and common README, then migrate changelog before further rollout.
 
-## R1 completion
+Caller documentation cleanup is prepared separately in changelog #560, lint-commit #730, and cleanup-package-json #563. Keep package-specific settings in workflow comments; common instructions belong in the shared README.
 
-- Agree on the publishing order, inputs/outputs, recovery, and environment handling in [design.md](design.md).
-- Keep GitHub draft while npm awaits approval; publish JSR after finalize.
-- Start finalize manually after approval.
-- Cover caller behavior in the [examples](../../../examples/README.md).
+## Validation
 
-R1 and R2 are complete. PR #1 merged as `e463599b9a24190644b5d32475d818d04acd57dd`, and PR #3 merged as `98dd19df1a1137e6de377fff036605e1f089b2e9`. The reviewed workflow commit `bdf4f40eafc6fd4732bb30f46fe4d611d44cb198` and its helper pin `ca360dbda6c47172efe9f06fee633b7e5f524609` are both ancestors of main. R3 proposes this workflow commit to changelog.
+- Reject draft/prerelease explicitly, including prereleases delivered by `release: published`; reject tag/version mismatch, moved tags, invalid metadata, and unauthorized publishing events.
+- Confirm both destinations use the same tag commit even when main advances.
+- Verify npm provenance, mandatory registry/local cleanup, and consumer fields in the actual tarball.
+- Test pending/public/unknown npm states and failures between submission and receipt persistence. Never resend automatically after an uncertain outcome.
+- Verify existing JSR content and exports, and fail on conflicts or communication errors.
+- Confirm npm failure does not block JSR and JSR retry does not resend npm.
+- Test immutable Releases, artifact expiry, same-version concurrency, distinct-version queuing, protected environments, and nested permissions.
+- Confirm the chosen GitHub Release creation path triggers deployment; GITHUB_TOKEN-created Releases need explicit workflow invocation.
+- Compare package contents in every caller migration and retain compatibility checks.
 
-## R2 validation
+Use fixtures and read-only hosted checks during development. Validate real registry publication during normal approved releases. Automatic post-approval monitoring remains a separate decision.
 
-Exercise the workflow interface with fixtures for new versions, pending states, successful legacy no-ops, exit 0 without an ID, unknown outcomes, tag mismatches, draft/asset persistence failures, duplicate drafts, and finalize retries. Check both cleanup implementations, fixed CLI output, tarball input, and provenance options.
+## Migration and records
 
-Do not equate tag existence with complete publication or communication failure with absence. Save draft/tarball/integrity before sending to npm, and prevent automatic same-version resending after a partial failure.
+Inventory old pending npm versions, drafts, and temporary source refs before changing each caller. Complete or recover them using their reviewed pinned implementation. Replace package.json-triggered staging and Finalize callers together with the new Release trigger.
 
-## Adoption configuration
-
-- The shared repository is public and caller Actions settings permit pinned references.
-- npm Trusted Publisher matches caller owner/repository/release.yml/environment.
-- Both deployment environments currently have no protection rules; recheck at adoption and retain one approval per protected stage/finalize if rules are added.
-- Manage each lint tool through a lockfile. Do not add latest Biome in CI; remove changelog's extra install in R6 or a separate PR.
-- Retain required check names and compatibility test coverage.
-
-Publish only during normal releases, not as registry test releases. After R3, validate pilot OIDC/staging before expanding to the remaining repositories.
-
-## Updates and recovery
-
-Update callers through pinned SHA PRs. Revert references when necessary; recover failed destinations rather than rolling back published versions.
-
-Update record.md as work progresses, including reviews, settings, and evidence. Finalize README/records after R6. All repository files, PRs, and comments written for nlibjs use English.
-
-## Initial scope and later extensions
-
-R2 persists only Release tag_name/target_commitish, tarball, and integrity. Do not implement custom record schemas, complete run-history verification, stage-ID-dependent restoration, or scheduled finalize. Evaluate specific needs at R4 and propose separate PRs.
-
-Commit helper changes as A, then update the workflow's pinned helper reference in B. Validate B and propose B to callers. Document this two-step update in README.
-
-## Current next steps: R4 pilot review
-
-1. Review the [pilot results](../t005-changelog-pilot/verification.md), including the successful finalization and the temporary source-ref recovery for workflow permission restrictions.
-2. Review and deploy [automatic source-ref retention](../t006-source-ref-retention/verification.md), then update the changelog pin and verify ref creation/cleanup with its GitHub token before expansion. Review the remaining repositories' differences and approve the next adoption.
-3. Adopt lint-commit and cleanup-package-json first; review typing and negotiate separately with their JSR behavior. Keep personal-repository adoption and compatibility CI changes in later phases.
-
-The changelog 0.4.1 release removed the nonexistent library main entry through PR #556. Its CLI is verified. Removing changelog's extra Biome installation remains R6 or a separate PR.
+Keep historical evidence in record.md and linked task records. Update current operating instructions when the implementation lands. Helper changes require a commit followed by a workflow commit pinning that helper; propose the validated workflow SHA to callers through individual PRs.
