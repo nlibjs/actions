@@ -16,10 +16,14 @@ Keep exact tag selection and all saved-asset, npm-integrity, and source checks. 
 
 ## Validation
 
-Regression tests emulate GitHub replacing an omitted tag during receipt updates and publication. They also reject changed release IDs, tags, targets, and draft states in PATCH responses. Run the complete tests, strict TypeScript check, Biome, workflow/caller contracts, actionlint, and whitespace validation before proposing the new helper/workflow pin.
+Regression tests emulate GitHub replacing an omitted tag during receipt updates and publication. They also reject changed release IDs, tags, targets, and draft states in PATCH responses. All 39 tests passed. Strict TypeScript, Biome, workflow/caller contracts, actionlint, and whitespace validation passed. The first sandbox-only test invocation could not run its network-dependent npm subprocesses; the complete suite passed with the configured network access.
 
 ## Existing pilot recovery
 
 The already-public npm package must not be staged again. Restore the existing draft's tag to `v0.4.1` only after verifying release ID, saved source, tarball name/version/repository, saved SHA-512, and public npm integrity. Preserve the assets and body, keep the release a draft, and do not create a Git tag during recovery. Then use the corrected, reviewed caller pin for Finalize. The maintainer starts Finalize; it checks public npm and publishes the saved release and version tag.
 
 Expected package integrity: `sha512-4J0t1edsA8NhVAZwBjnPsf6uRDLRdHdKUBZihsDiQpq31MVuX6biX+LdC/i3jkPvWE4NRcLMVn1cG6uY1QdQqA==`.
+
+## Immutable pins
+
+Helper implementation: `d685c67777dfeb0325ecc707533bf5dddbd26439`. The subsequent workflow commit pins this existing helper in all five operation jobs. Preserve both commits with a merge commit, then update callers to the reviewed workflow commit.
