@@ -1,0 +1,8 @@
+{
+  "name": "@nlib/actions-release-tools",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@nlib/cleanup-package-json": "0.5.0"
+  }
+}

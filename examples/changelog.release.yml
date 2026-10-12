@@ -1,0 +1,55 @@
+# R1 review example. Replace placeholder refs with real full-length commit SHAs.
+# Install only after R1/R2/R3 review. This file is not deployed.
+name: Release
+
+on:
+  push:
+    branches: [main]
+    paths: [package.json]
+  workflow_dispatch:
+    inputs:
+      action:
+        description: Operation
+        type: choice
+        options: [verify, stage, finalize]
+        default: verify
+        required: true
+      version:
+        description: "Required for finalize only, e.g. 1.2.3"
+        type: string
+        default: ""
+        required: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  Verify:
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.action == 'verify'
+    permissions:
+      contents: read
+    uses: nlibjs/actions/.github/workflows/npm-release.yml@REPLACE_WITH_COMMON_WORKFLOW_SHA
+    with:
+      action: verify
+
+  Stage:
+    if: github.event_name == 'push' || github.event.inputs.action == 'stage'
+    permissions:
+      contents: write
+      id-token: write
+    uses: nlibjs/actions/.github/workflows/npm-release.yml@REPLACE_WITH_COMMON_WORKFLOW_SHA
+    with:
+      action: stage
+
+  Finalize:
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.action == 'finalize'
+    permissions:
+      contents: write
+    uses: nlibjs/actions/.github/workflows/npm-release.yml@REPLACE_WITH_COMMON_WORKFLOW_SHA
+    with:
+      action: finalize
+      version: ${{ github.event.inputs.version }}
