@@ -1,6 +1,6 @@
 # Shared release workflows
 
-Use this public repository to verify and stage npm packages from a published GitHub Release. Callers can publish to JSR in parallel. Release tooling uses Node 26.x, npm 11.21.0, and cleanup-package-json 0.5.0.
+Use this public repository to verify and stage npm packages from a published GitHub Release. Callers can publish to JSR after npm staging succeeds. Release tooling uses Node 26.x, npm 11.21.0, and cleanup-package-json 0.5.0.
 
 ## Usage
 
@@ -27,7 +27,7 @@ Stage:
 | environment | Empty | Optional deployment environment for Stage |
 | cleanup-source | registry | registry or local; local is restricted to cleanup-package-json self-release |
 
-npm and JSR use github.sha and independently validate the live Release tag. JSR does not depend on npm Stage.
+npm and JSR use github.sha. Stage validates the live Release tag before JSR can run.
 
 ## Requirements
 
@@ -47,7 +47,7 @@ Release tooling does not change consumer Node support or compatibility CI. Priva
 3. The workflow checks the published Release and tag, runs lint/tests/build, cleans the npm manifest, and inspects one tarball. Before submission it saves the expected integrity as a workflow artifact, then stages those exact bytes with provenance and saves the result.
 4. Approve the exact package/version in npmjs.com → Staged Packages using maintainer 2FA.
 
-JSR callers publish the same source independently while npm awaits approval. GitHub Release and JSR can therefore be available before npm. No Finalize operation follows approval.
+The JSR caller uses `needs: Stage`: **npm Stage succeeds → JSR publishes**. It does not wait for human npm approval. If Stage fails or is skipped, JSR is skipped too. GitHub Release and JSR can be available before npm; no Finalize operation follows approval.
 
 A GITHUB_TOKEN-created Release normally does not trigger another workflow. Publish through the GitHub UI or a triggering actor/token; automation using GITHUB_TOKEN must explicitly invoke deployment. The source commit must contain the Release-triggered caller before its Release is published.
 
@@ -62,14 +62,14 @@ Evidence artifacts contain only package identity, Release ID, tag, commit, integ
 | Submission failed or its outcome is unknown | Inspect npm Staged Packages and public npm; retries stop without resending |
 | Preparation failed before submission | Re-run Stage on the same Release tag |
 | Evidence is missing after submission started, or expired | Inspect registry state; retries stop without resending |
-| JSR failed | Re-run its failed job; it verifies existing content or publishes an absent version |
+| JSR failed | Re-run its failed job; the JSR CLI skips an already published version |
 | Tag moved, evidence conflicts, or a lookup fails | Investigate the affected destination; no automatic repair |
 
 For manual Stage, select the published Release tag in **Run workflow**, choose action=stage, and enter the same tag. The selected commit must match the Release source so npm provenance identifies the built commit. Manual dispatch can deploy a Release whose event did not trigger, including one created with GITHUB_TOKEN.
 
 Stage automatically checks prior submission steps before retrying preparation. If submission may have started without a successful receipt, it stops and asks you to inspect npm Staged Packages. Keep workflow history and evidence during recovery; lookup failures stop publishing.
 
-JSR uses the same source and runs independently. Re-run its failed job to recover only JSR. A manual Stage also checks JSR in configured callers; matching existing JSR content is a no-op.
+The JSR CLI skips existing versions without comparing file contents. Re-run a failed JSR job to retry only JSR. A manual Stage retry also runs JSR after Stage succeeds.
 
 ## Authentication and permissions
 
@@ -77,7 +77,7 @@ Verify uses contents: read. Stage uses contents: read, actions: read for evidenc
 
 The shared Stage jobs inherit caller permissions; Verify explicitly reduces them. GitHub checks skipped nested jobs too, so publishing jobs must not request writes from a read-only Verify caller. A configured environment protects one Stage job; an empty setting creates no environment. Lint-commit and cleanup-package-json retain deployment to match their Trusted Publisher configuration.
 
-Use a caller concurrency group containing the Release tag, with cancel-in-progress=false. npm and JSR run in parallel within that group. Deploy different versions in separate groups so pending releases cannot replace one another.
+Use a caller concurrency group containing the Release tag, with cancel-in-progress=false. npm Stage and JSR run sequentially within that group. Deploy different versions in separate groups so pending releases cannot replace one another.
 
 ## Development and validation
 

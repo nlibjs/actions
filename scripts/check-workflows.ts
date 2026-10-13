@@ -81,7 +81,8 @@ for (const file of [
   }
   if (jobs.PublishJsr) {
     const jsr = record(jobs.PublishJsr, 'JSR');
-    assert.equal(jsr.needs, undefined);
+    assert.equal(jsr.needs, 'Stage');
+    assert.equal(jsr.if, undefined);
     assert.equal(record(jobs.Stage, 'Stage').needs, undefined);
     // biome-ignore lint/suspicious/noTemplateCurlyInString: GitHub expression.
     const source = '${{ github.sha }}';
@@ -103,4 +104,4 @@ for (const [name, permissions] of [
   assert.deepEqual(job.permissions, permissions);
   checkReusablePermissions(workflow, permissions, name);
 }
-console.log('Workflow contracts, permissions, action pins and parallel caller sources passed.');
+console.log('Workflow contracts, permissions, pins, sources and JSR execution order passed.');
