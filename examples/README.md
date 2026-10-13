@@ -16,6 +16,4 @@ Follow the shared [requirements](../README.md#requirements), [release procedure]
 
 ## JSR preparation
 
-The JSR template requires a caller release:jsr script. It validates package/jsr metadata and the live tag against GITHUB_SHA. Existing versions require matching source content and exports; only definitive absence permits publishing.
-
-Both destinations use github.sha and validate it against the live Release tag. JSR uses the original manifest and can recover independently from npm. Preserve the caller's JSR/Deno checks and generated-file validation; pin its tooling during adoption.
+Keep jsr.json in sync with package.json; put generated-source checks in the caller's `release:prepare` script, which Stage runs before JSR publishes.
