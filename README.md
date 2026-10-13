@@ -101,4 +101,4 @@ Commit helper changes first, then commit the workflow referencing that full help
 
 Before migration, complete or explicitly recover existing pending versions and drafts using their old pinned Stage/Finalize implementation. Replace package.json-triggered staging and Finalize callers together. Existing caller pins continue to use their original implementation.
 
-See the [design rationale](docs/tasks/t001-shared-workflows/design.md), [remaining rollout](docs/tasks/t001-shared-workflows/plan.md), and [verification record](docs/tasks/t001-shared-workflows/record.md). Keep package-specific settings in workflow comments.
+Remaining rollout (2026-10-13): cleanup-package-json, then typing/negotiate with JSR. Personal-repository reuse and compatibility CI follow. Keep package-specific settings in workflow comments.
