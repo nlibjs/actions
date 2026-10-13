@@ -70,7 +70,7 @@ Evidence artifacts contain only package identity, Release ID, tag, commit, integ
 
 For manual Stage, select the published Release tag in **Run workflow**, choose action=stage, and enter the same tag. The selected commit must match the Release source so npm provenance identifies the built commit. Manual dispatch can deploy a Release whose event did not trigger, including one created with GITHUB_TOKEN.
 
-Preparation can be retried after lint, tests, build, pack, or evidence upload fails. Before preparing again, inspect prior attempts of the version's named Stage job. If its separate **Submit npm tarball** step started, missing evidence cannot authorize another submission. A successful receipt or matching public integrity allows verification without resending; an unknown outcome requires npm Staged Packages inspection. Keep workflow history and evidence during recovery. Lookup failures stop publishing.
+Stage automatically checks prior submission steps before retrying preparation. If submission may have started without a successful receipt, it stops and asks you to inspect npm Staged Packages. Keep workflow history and evidence during recovery; lookup failures stop publishing.
 
 JSR uses the same resolved source and runs independently. Re-run its failed job to recover only JSR. A manual Stage also checks JSR in configured callers; matching existing JSR content is a no-op.
 
@@ -101,4 +101,4 @@ Commit helper changes first, then commit the workflow referencing that full help
 
 Before migration, complete or explicitly recover existing pending versions and drafts using their old pinned Stage/Finalize implementation. Replace package.json-triggered staging and Finalize callers together. Existing caller pins continue to use their original implementation.
 
-The [design](docs/tasks/t001-shared-workflows/design.md), [plan](docs/tasks/t001-shared-workflows/plan.md), and [historical record](docs/tasks/t001-shared-workflows/record.md) describe rollout. Pilot the new lifecycle in changelog, migrate existing npm-only callers individually, then adopt typing/negotiate with JSR. Keep package-specific settings in workflow comments.
+See the [design rationale](docs/tasks/t001-shared-workflows/design.md), [remaining rollout](docs/tasks/t001-shared-workflows/plan.md), and [verification record](docs/tasks/t001-shared-workflows/record.md). Keep package-specific settings in workflow comments.

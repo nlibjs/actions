@@ -11,18 +11,10 @@ Copy a caller to `.github/workflows/release.yml`. Replace REPLACE_WITH_COMMON_WO
 | negotiate.release.yml | Deno checks/publishing in parallel with npm Stage |
 | gjbkz-package.release.yml | Selected personal npm repository |
 
-Publish a stable GitHub Release at the intended commit, matching the package.json version and copying its CHANGELOG notes. npm is staged automatically; approve it in npmjs.com. See the [common release and recovery procedure](../README.md#release-procedure).
-
-Manual dispatch defaults to verify. To deploy or retry a published Release, select its tag in **Run workflow**, choose stage, and enter the same tag. Pre-submission failures can be retried; missing evidence after a started submission requires registry inspection. Prereleases are rejected explicitly because published events also include prereleases.
+Follow the shared [requirements](../README.md#requirements), [release procedure](../README.md#release-procedure), and [recovery instructions](../README.md#existing-versions-and-failures). Package-specific settings belong in workflow comments.
 
 ## JSR preparation
 
-JSR examples require a caller release:jsr script. Validate package/jsr metadata and the live tag against RELEASE_SOURCE_SHA before publishing. If the version exists, compare its source content and exports; communication errors and conflicts must fail. Publish only when definitively absent.
+JSR examples require a caller release:jsr script. It validates package/jsr metadata and the live tag against RELEASE_SOURCE_SHA. Existing versions require matching source content and exports; only definitive absence permits publishing.
 
-Both destinations use the Source job's resolved SHA. Their jobs run independently; retry the failed JSR job without rerunning npm. Preserve typing's existing JSR CLI and negotiate's Deno checks and generated-file validation. Add scripts and pin their tooling in each adoption PR.
-
-## Configuration
-
-Register the caller owner/repository/release.yml/environment as npm Trusted Publisher. JSR keeps its own publishing authorization. npm Stage needs contents: read, actions: read, and id-token: write; source resolution and Verify need only contents: read. Configure artifact retention to the maximum permitted repository default.
-
-Keep repository-specific settings in release.yml comments. Complete old pending releases with their old pinned workflow before replacing its triggers and Finalize jobs.
+Both destinations use the Source job's resolved SHA. JSR uses the original manifest and can recover independently from npm. Preserve typing's existing JSR CLI and negotiate's Deno checks and generated-file validation; pin their tooling in each adoption PR.

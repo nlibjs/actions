@@ -1,73 +1,33 @@
 # Shared release workflow design
 
-Status: revised design; implementation and caller migration are pending. The deployed workflow still uses Stage and Finalize. Historical validation remains in record.md and the linked task records.
+The Release-triggered implementation is deployed. Operating instructions and the interface are in the [README](../../../README.md); rollout is tracked in the [plan](plan.md).
 
-## Release lifecycle
+## Release identity
 
-1. A maintainer publishes a stable GitHub Release with a `v<package.json version>` tag at the intended source commit, copying the matching CHANGELOG section into the Release notes.
-2. The caller's `release: published` event starts npm staging and, where configured, JSR publishing as independent jobs.
-3. A maintainer approves the staged npm version with 2FA on npmjs.com.
+A published GitHub Release provides the version tag and source commit. Both registry jobs use that resolved commit, so main can advance without changing the package being distributed. Manual deployment selects the same tag to keep provenance tied to the built commit.
 
-GitHub Release is public before registry distribution completes. JSR may become available before npm approval. Each destination reports its own outcome; failure in one destination does not block the other. There is no manual Finalize operation in this lifecycle.
+The workflow validates stable Release status, tag/version agreement, repository identity, and consumer fields after cleanup. JSR callers additionally validate their package metadata and exports.
 
-## Source and validation
+## Independent destinations
 
-Resolve the Release tag to a full commit SHA, including annotated tags. Require the tag, package.json version, stable Release status, and repository identity to agree. JSR callers also validate jsr.json name/version and export paths. Each publishing job checks out the same resolved commit; it never builds current main as a substitute.
+npm stages a package for maintainer approval. JSR publishes independently from the same source. GitHub Release and JSR can become available before npm; each destination has its own outcome and retry.
 
-Require lint, tests, build, and tarball inspection for npm. Use Node 26.x, pinned npm, and mandatory cleanup-package-json. Its own package uses its built local CLI. Preserve consumer fields, supported Node versions, and compatibility CI coverage.
+Version-specific caller concurrency serializes attempts for one Release while allowing different versions and parallel registry jobs.
 
-JSR jobs use the original manifest and repository-specific preparation. Preserve typing's existing JSR CLI flow and negotiate's Deno checks, generated-file checks, and publishing flow. npm staging success is not a prerequisite for JSR.
+## Evidence and retries
 
-A release created with GITHUB_TOKEN does not normally trigger another workflow. The release procedure must use a triggering actor/token or explicitly invoke the deployment workflow. Verify this path before rollout.
+Before npm receives a tarball, its expected integrity is saved in a workflow artifact. A second artifact records the staging result. Evidence binds package identity to the Release ID, tag, and source SHA.
 
-## Caller interface
+Public npm lookup cannot detect pending versions. Missing evidence therefore cannot establish that nothing was submitted. Stage checks the separate submission step's history automatically: pre-submission failures can be retried, while an uncertain submission requires registry inspection. This depends on retaining both workflow history and artifacts.
 
-Callers own Release events, concurrency, deployment environments, and JSR jobs. Pin shared workflows and helper actions to reviewed full SHAs.
+Only integrity and receipts need persistence because npm approval completes publication. The workflow stages the inspected tarball without storing it or modifying the published Release, supporting immutable Releases.
 
-The revised npm interface supports read-only Verify and Stage. Verify remains the default manual check. Manual Stage identifies an existing published Release by tag and requires the selected workflow commit to match its source; it does not publish from an arbitrary branch. Replace Finalize-specific inputs and outputs, including jsr-ready, in the shared workflow and callers together.
+## Permissions and implementation pins
 
-Publishing accepts stable, non-draft, non-prerelease Releases belonging to the caller repository. Draft creation, package.json pushes, Release edits, pull requests, and forks do not initiate distribution.
+Verify and source resolution are read-only. Stage additionally needs artifact reads and OIDC. Publishing jobs inherit caller permissions because GitHub checks skipped reusable jobs against the caller's permission ceiling. An optional deployment environment protects one Stage job.
 
-Serialize deployment attempts for the same Release while allowing npm and JSR jobs within an attempt to run in parallel. Different versions must not replace each other's pending runs. Preserve independent failed-job retries.
+A workflow commit pins an already-existing helper commit. Both must remain in shared main history so callers can use reviewed, reproducible implementations.
 
-## Persistence and recovery
+## Historical design
 
-Create and inspect one npm tarball and stage those exact bytes with provenance. Before submission, persist its expected integrity in a workflow artifact bound to the Release ID, tag, resolved SHA, and package identity. Save the staging result afterward; a stage ID is optional. Retain artifacts for the maximum period allowed by repository policy. The tarball itself is not persisted.
-
-Retries use the saved integrity and staging receipt to verify public npm content or direct the maintainer to pending-version approval. Pre-submission failures can be retried on the same Release tag. If submission started and evidence is missing or expired, report the public registry state and require inspection of npm Staged Packages; never resend. Public absence does not prove that no pending version exists. Release bodies and assets remain unchanged, including for immutable Releases.
-
-| Destination state | Recovery |
-|---|---|
-| npm stage succeeded; approval pending | Approve in npmjs.com; do not submit again |
-| npm is public | Compare published integrity with the saved expected integrity; matching content succeeds |
-| npm submission outcome is unknown | Inspect pending/public state; do not automatically resend |
-| JSR version exists | Verify source content and exports; matching content succeeds |
-| JSR version is absent | Publish the validated source with the existing CLI |
-| Lookup fails, content conflicts, or the tag moves | Stop the affected destination and report the mismatch |
-
-Tag existence identifies the source, not completion of registry publishing. Treat only a definitive missing-version response as public absence; npm pending state still requires a receipt or maintainer inspection. Retrying JSR must not resend npm. No deployment step creates or publishes a GitHub Release, creates a version tag, or maintains temporary source branches.
-
-npm approval completes npm publication. Public-integrity confirmation is a read-only check, not a required manual lifecycle operation. Any automated post-approval monitor needs a separate scheduling decision.
-
-## Permissions and repository settings
-
-Verify uses contents: read. npm staging uses contents: read and id-token: write; reading artifacts from earlier attempts also needs actions: read. Validate artifact access and preservation under these permissions. Validate narrow permissions through GitHub's nested workflow checks, including skipped jobs.
-
-Configure npm Trusted Publisher for the caller owner/repository/release.yml/environment. Retain deployment environments and their protection rules; each npm staging attempt uses one protected job. Verify needs no deployment approval.
-
-| Repository | npm environment | Cleanup | JSR |
-|---|---|---|---|
-| changelog | None | registry | None |
-| lint-commit | deployment | registry | None |
-| cleanup-package-json | deployment | local | None |
-| typing | None | registry | Existing JSR CLI |
-| negotiate | None | registry | Existing Deno CLI/checks |
-| Selected gjbkz repository | Caller setting | registry | When needed |
-
-Common operations and recovery belong in the shared README. Keep caller-specific settings in release.yml comments.
-
-## Migration
-
-Complete or explicitly recover existing staged versions and drafts under the deployed workflow before switching each caller. Retain the old full-SHA implementation for those attempts. Remove automatic package.json-triggered staging when enabling Release-triggered deployment, so both lifecycles cannot submit the same version.
-
-Update the shared implementation and examples first, then migrate changelog as the pilot. After verification, migrate lint-commit and cleanup-package-json individually, followed by typing and negotiate. Personal-repository adoption and compatibility CI work remain later phases.
+The original workflow created drafts, staged saved tarballs, and published through Finalize. Its [verification records](record.md) remain relevant to callers pinned to that implementation. Migration completes or recovers pending attempts before replacing their triggers.

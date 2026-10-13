@@ -1,4 +1,6 @@
-# Changelog pilot release results
+# Changelog 0.4.1 pilot results
+
+Historical snapshot: 2026-10-12, for the retired Stage/Finalize workflow. The Release-triggered pilot is in the [current verification record](../t001-shared-workflows/record.md).
 
 `@nlib/changelog@0.4.1` is public on npm and [GitHub Releases](https://github.com/nlibjs/changelog/releases/tag/v0.4.1). The npm package, saved GitHub assets, provenance source and version tag agree.
 
@@ -8,8 +10,8 @@
 | --- | --- |
 | Saved source and `v0.4.1` tag | `4cb86276ec6de60cd427b5fd9d11e8a786e88b2f` |
 | Caller at finalization | `8c2ffd6b77363b8159b55a83a90594d9ffdb5137` |
-| Final shared workflow | `1ff589ed2dc842961210788eae5d19716c8c50fd` |
-| Final helper | `d685c67777dfeb0325ecc707533bf5dddbd26439` |
+| Workflow at finalization | `1ff589ed2dc842961210788eae5d19716c8c50fd` |
+| Helper at finalization | `d685c67777dfeb0325ecc707533bf5dddbd26439` |
 | GitHub Release ID | `410299307` |
 | Saved assets | `package.tgz`, `package.integrity` |
 | Package files | 39, including the CLI bin |
@@ -41,8 +43,6 @@ sha512-4J0t1edsA8NhVAZwBjnPsf6uRDLRdHdKUBZihsDiQpq31MVuX6biX+LdC/i3jkPvWE4NRcLMV
 
 Recovery retained the saved package and source throughout. Finalization used the staged tarball rather than rebuilding current main.
 
-## Rollout checkpoint
+## Follow-up
 
-The pilot demonstrates successful npm staging, provenance, maintainer approval, saved-package verification and GitHub finalization. Before expanding, review the conditional source-ref recovery above and decide whether to document maintainer recovery or add source-ref retention during Stage. The pilot used a helper without automatic source retention. A [follow-up implementation](../t006-source-ref-retention/verification.md) proposes retention before preparation and conditional cleanup after tag verification.
-
-Expansion remains subject to the pilot review and maintainer approval. Adopt lint-commit and cleanup-package-json first, then review typing and negotiate separately, including their JSR behavior. Personal-repository adoption and compatibility CI changes remain separate phases.
+[Actions #8](https://github.com/nlibjs/actions/pull/8) added [automatic source retention](../t006-source-ref-retention/verification.md) after the pilot. [Actions #10](https://github.com/nlibjs/actions/pull/10) subsequently replaced draft finalization and temporary source refs with Release-triggered deployment.

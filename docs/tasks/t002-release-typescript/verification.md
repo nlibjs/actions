@@ -1,32 +1,26 @@
-# npm release TypeScript migration
+# TypeScript migration verification
 
-Issue: [#2](https://github.com/nlibjs/actions/issues/2). Base: PR #1's merge commit `e463599b9a24190644b5d32475d818d04acd57dd`.
+Historical snapshot: 2026-10-12. [Issue #2](https://github.com/nlibjs/actions/issues/2) was implemented in [PR #3](https://github.com/nlibjs/actions/pull/3), before the Release-triggered redesign.
 
-## Implementation and compatibility
+## Implementation
 
-The helper, tests, and workflow contract script now use `.ts` ES modules. Node 26 runs source directly with its built-in type stripping. The composite entry point is `src/cli.ts`; the external cleanup dependency still uses its published `esm/cli.mjs`. No JavaScript output or TypeScript runtime loader is introduced.
+The helper, tests, and workflow checks moved to TypeScript ES modules executed directly by Node 26. Strict noEmit type checking covered source, tests, and scripts. External JSON was validated at runtime, and fixture adapters were checked against the production interface.
 
-Development dependencies pin TypeScript 6.0.3 and Node types 26.6.4. The root `tsconfig.json` covers source, tests, and scripts with strict checking, `noUncheckedIndexedAccess`, `verbatimModuleSyntax`, `erasableSyntaxOnly`, and `noEmit`. CI runs `npm run typecheck`; existing Biome globs also cover the migrated source and root configuration.
+The migration preserved the then-current Stage/Finalize inputs, outputs, permissions, and behavior. Implementation helper: `ca360dbda6c47172efe9f06fee633b7e5f524609`. Workflow: `bdf4f40eafc6fd4732bb30f46fe4d611d44cb198`. Both were retained in main by merge commit `98dd19df1a1137e6de377fff036605e1f089b2e9`.
 
-Inputs, outputs, release states, package metadata, GitHub Releases/assets/tag objects, command results, and the runtime adapter have explicit contracts. Fixture adapters and overrides are checked against the production interface. External JSON enters as `unknown` and is checked before use; no type assertions replace validation. Unexpected shapes fail visibly. Consumer fields remain available for package-preservation checks.
+## Validation
 
-The workflow's inputs, outputs, job permissions and environments are unchanged. R2's staging receipts, optional stage IDs, saved tarball/integrity checks, fixed target SHA, successful no-ops, and refusal to re-stage an unconfirmed draft remain covered by the existing tests. Workflow contract checks additionally require the TypeScript entry point, the output names, and the CI typecheck step.
+Node 26.11.1, npm 11.21.0, TypeScript 6.0.3, Biome 2.5.15, and actionlint 1.7.12 were used with committed lockfiles.
 
-## Validation (2026-10-12)
+| Check | Result |
+|---|---|
+| Type checking | Passed |
+| Tests | 33 passed, including eight new JSON/adapter/CLI regressions |
+| Biome | Passed |
+| Workflow and caller contracts | Passed |
+| actionlint | Passed; ShellCheck was not run |
+| Whitespace checks | Passed |
 
-Environment: Node 26.11.1, npm 11.21.0, TypeScript 6.0.3, Biome 2.5.15, actionlint 1.7.12. Dependencies use their committed lockfiles. The actionlint release archive was verified against its published SHA-256 checksum.
+A local write-rejecting registry tested tarball staging through npm dry-run. GitHub responses were injected, and the TypeScript CLI rejected invalid inputs before writing outputs.
 
-- `npm run typecheck`: passed for source, tests, and scripts.
-- `npm test`: all 33 tests passed (the 25 existing tests plus eight JSON/adapter/CLI regressions).
-- `npm run lint`: passed with no warnings.
-- `npm run check`: passed workflow YAML, pinned refs, permissions, output and caller contracts.
-- `actionlint -shellcheck= .github/workflows/*.yml examples/*.yml`: passed; shellcheck was disabled for consistency with the existing local validation environment.
-- `git diff --check`: passed.
-
-The tarball staging test uses npm 11.21.0 with `--dry-run` and a local registry fixture that rejects writes. npm response tests use a local command fixture; GitHub tests use injected responses. The CLI is also executed directly as TypeScript and rejects invalid inputs before writing workflow outputs. No real package publication, draft Release mutation, OIDC signing, or caller adoption is performed.
-
-## Helper pin and merge procedure
-
-Implementation commit A is `ca360dbda6c47172efe9f06fee633b7e5f524609`. The subsequent commit B pins all five helper references in `npm-release.yml` to A. Check that A contains the `.ts` entry point and source, is an ancestor of B, and that B pins A. Open the follow-up PR against main and use **Create a merge commit** to retain A. After merging, verify that A is an ancestor of main before proposing B to callers. The README documents the alternative two-PR process if repository policy requires squash or rebase.
-
-Technical review and the user's merge decision remain pending. Real OIDC/provenance validation belongs to the pilot release described in the shared workflow plan.
+Later publication evidence is in the [verification record](../t001-shared-workflows/record.md).
