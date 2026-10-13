@@ -16,6 +16,4 @@ Follow the shared [requirements](../README.md#requirements), [release procedure]
 
 ## JSR preparation
 
-Keep package.json and jsr.json versions in sync. Stage runs the caller's build or release:prepare script; validate generated source there before JSR publishes the committed source from a fresh checkout. Preserve the caller's JSR/Deno checks.
-
-The JSR template uses the pinned official CLI after Stage succeeds. See the shared [release procedure](../README.md#release-procedure) for execution order and npm approval.
+Keep jsr.json in sync with package.json; put generated-source checks in the caller's `release:prepare` script, which Stage runs before JSR publishes.

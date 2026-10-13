@@ -47,7 +47,7 @@ Release tooling does not change consumer Node support or compatibility CI. Priva
 3. The workflow checks the published Release and tag, runs lint/tests/build, cleans the npm manifest, and inspects one tarball. Before submission it saves the expected integrity as a workflow artifact, then stages those exact bytes with provenance and saves the result.
 4. Approve the exact package/version in npmjs.com → Staged Packages using maintainer 2FA.
 
-The JSR caller uses `needs: Stage`: **npm Stage succeeds → JSR publishes**. It does not wait for human npm approval. If Stage fails or is skipped, JSR is skipped too. GitHub Release and JSR can be available before npm; no Finalize operation follows approval.
+JSR runs after Stage succeeds (`needs: Stage`), without waiting for npm approval. GitHub Release and JSR can be available before npm; no Finalize operation follows approval.
 
 A GITHUB_TOKEN-created Release normally does not trigger another workflow. Publish through the GitHub UI or a triggering actor/token; automation using GITHUB_TOKEN must explicitly invoke deployment. The source commit must contain the Release-triggered caller before its Release is published.
 
@@ -59,7 +59,7 @@ Evidence artifacts contain only package identity, Release ID, tag, commit, integ
 |---|---|
 | npm stage succeeded; approval pending | Approve in npmjs.com; retries do not resend |
 | npm is public | Stage retry verifies saved integrity and succeeds without rebuilding |
-| Submission failed or its outcome is unknown | Inspect npm Staged Packages and public npm; retries stop without resending |
+| Submission failed or its outcome is unknown | Inspect npm Staged Packages and public npm; retries stop without resending. If Stage remains blocked, check out the verified Release tag and publish JSR manually with `npx --yes jsr@0.14.3 publish` |
 | Preparation failed before submission | Re-run Stage on the same Release tag |
 | Evidence is missing after submission started, or expired | Inspect registry state; retries stop without resending |
 | JSR failed | Re-run its failed job; the JSR CLI skips an already published version |
@@ -68,8 +68,6 @@ Evidence artifacts contain only package identity, Release ID, tag, commit, integ
 For manual Stage, select the published Release tag in **Run workflow**, choose action=stage, and enter the same tag. The selected commit must match the Release source so npm provenance identifies the built commit. Manual dispatch can deploy a Release whose event did not trigger, including one created with GITHUB_TOKEN.
 
 Stage automatically checks prior submission steps before retrying preparation. If submission may have started without a successful receipt, it stops and asks you to inspect npm Staged Packages. Keep workflow history and evidence during recovery; lookup failures stop publishing.
-
-The JSR CLI skips existing versions without comparing file contents. Re-run a failed JSR job to retry only JSR. A manual Stage retry also runs JSR after Stage succeeds.
 
 ## Authentication and permissions
 
