@@ -28,6 +28,7 @@ jobs:
     uses: nlibjs/actions/.github/workflows/npm-release.yml@REPLACE_WITH_COMMON_WORKFLOW_SHA
     with:
       action: verify
+      # cleanup-source: local # cleanup-package-json self-release only
   Stage:
     if: (github.event_name == 'release' && !github.event.release.prerelease) || inputs.action == 'stage'
     permissions:
@@ -38,4 +39,5 @@ jobs:
     with:
       action: stage
       tag: ${{ github.event.release.tag_name || inputs.tag }}
-      environment: deployment
+      # environment: deployment
+      # cleanup-source: local # cleanup-package-json self-release only

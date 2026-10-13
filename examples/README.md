@@ -1,28 +1,21 @@
 # Release workflow caller examples
 
-Copy a caller to `.github/workflows/release.yml`. Replace REPLACE_WITH_COMMON_WORKFLOW_SHA with a reviewed workflow commit and, for JSR callers, REPLACE_WITH_HELPER_SHA with its helper pin.
+Copy [npm.release.yml](npm.release.yml) for npm-only packages or [jsr.release.yml](jsr.release.yml) for npm and JSR. Replace REPLACE_WITH_COMMON_WORKFLOW_SHA with a reviewed workflow commit.
 
-| Example | Settings |
-|---|---|
-| changelog.release.yml | npm only |
-| lint-commit.release.yml | environment: deployment |
-| cleanup-package-json.release.yml | deployment and cleanup-source: local |
-| typing.release.yml | JSR CLI in parallel with npm Stage |
-| negotiate.release.yml | Deno checks/publishing in parallel with npm Stage |
-| gjbkz-package.release.yml | Selected personal npm repository |
+Uncomment the optional environment, local cleanup, or Deno lines for these callers:
 
-Publish a stable GitHub Release at the intended commit, matching the package.json version and copying its CHANGELOG notes. npm is staged automatically; approve it in npmjs.com. See the [common release and recovery procedure](../README.md#release-procedure).
+| Caller | Template | Settings |
+|---|---|---|
+| changelog, selected gjbkz npm repository | npm | Defaults |
+| lint-commit | npm | Stage environment: deployment |
+| cleanup-package-json | npm | Stage environment: deployment; cleanup-source: local in both Verify and Stage |
+| typing | jsr | Defaults |
+| negotiate | jsr | Deno setup |
 
-Manual dispatch defaults to verify. To deploy or retry a published Release, select its tag in **Run workflow**, choose stage, and enter the same tag. Pre-submission failures can be retried; missing evidence after a started submission requires registry inspection. Prereleases are rejected explicitly because published events also include prereleases.
+Follow the shared [requirements](../README.md#requirements), [release procedure](../README.md#release-procedure), and [recovery instructions](../README.md#existing-versions-and-failures). Keep package-specific settings in workflow comments.
 
 ## JSR preparation
 
-JSR examples require a caller release:jsr script. Validate package/jsr metadata and the live tag against RELEASE_SOURCE_SHA before publishing. If the version exists, compare its source content and exports; communication errors and conflicts must fail. Publish only when definitively absent.
+The JSR template requires a caller release:jsr script. It validates package/jsr metadata and the live tag against GITHUB_SHA. Existing versions require matching source content and exports; only definitive absence permits publishing.
 
-Both destinations use the Source job's resolved SHA. Their jobs run independently; retry the failed JSR job without rerunning npm. Preserve typing's existing JSR CLI and negotiate's Deno checks and generated-file validation. Add scripts and pin their tooling in each adoption PR.
-
-## Configuration
-
-Register the caller owner/repository/release.yml/environment as npm Trusted Publisher. JSR keeps its own publishing authorization. npm Stage needs contents: read, actions: read, and id-token: write; source resolution and Verify need only contents: read. Configure artifact retention to the maximum permitted repository default.
-
-Keep repository-specific settings in release.yml comments. Complete old pending releases with their old pinned workflow before replacing its triggers and Finalize jobs.
+Both destinations use github.sha and validate it against the live Release tag. JSR uses the original manifest and can recover independently from npm. Preserve the caller's JSR/Deno checks and generated-file validation; pin its tooling during adoption.
