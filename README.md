@@ -26,11 +26,8 @@ Stage:
 | tag | Empty | Published stable Release tag for stage, e.g. v1.2.3 |
 | environment | Empty | Optional deployment environment for Stage |
 | cleanup-source | registry | registry or local; local is restricted to cleanup-package-json self-release |
-| source-sha | Empty | Optional expected Release commit, shared with a parallel JSR job |
 
-Outputs are package-name, version, tag, source-sha, npm-state, and release-url. Verify reports npm-state=unknown without registry or Release lookups. Stage reports staged or published when evidence confirms that state.
-
-The helper action also supports phase=resolve to resolve a Release tag for parallel jobs. The JSR examples use its source-sha for both destinations; JSR does not depend on npm Stage.
+npm and JSR use github.sha and independently validate the live Release tag. JSR does not depend on npm Stage.
 
 ## Requirements
 
@@ -72,11 +69,11 @@ For manual Stage, select the published Release tag in **Run workflow**, choose a
 
 Stage automatically checks prior submission steps before retrying preparation. If submission may have started without a successful receipt, it stops and asks you to inspect npm Staged Packages. Keep workflow history and evidence during recovery; lookup failures stop publishing.
 
-JSR uses the same resolved source and runs independently. Re-run its failed job to recover only JSR. A manual Stage also checks JSR in configured callers; matching existing JSR content is a no-op.
+JSR uses the same source and runs independently. Re-run its failed job to recover only JSR. A manual Stage also checks JSR in configured callers; matching existing JSR content is a no-op.
 
 ## Authentication and permissions
 
-Verify and source resolution use contents: read. Stage uses contents: read, actions: read for evidence retrieval, and id-token: write for npm Trusted Publishing. GitHub-hosted runners are required. No npm token or inherited secrets are needed for public publishing.
+Verify uses contents: read. Stage uses contents: read, actions: read for evidence retrieval, and id-token: write for npm Trusted Publishing. GitHub-hosted runners are required. No npm token or inherited secrets are needed for public publishing.
 
 The shared Stage jobs inherit caller permissions; Verify explicitly reduces them. GitHub checks skipped nested jobs too, so publishing jobs must not request writes from a read-only Verify caller. A configured environment protects one Stage job; an empty setting creates no environment. Lint-commit and cleanup-package-json retain deployment to match their Trusted Publisher configuration.
 
@@ -93,12 +90,10 @@ npm test
 npm run check
 ```
 
-Use Node 26.x and npm 11.21.0. Tests use fixtures and a local dry-run registry; they do not publish packages. Workflow checks cover action pins, permissions, and parallel caller sources. Run actionlint on the workflows and examples as well.
+Use Node 26.x and npm 11.21.0. Tests use fixtures and a local dry-run registry; they do not publish packages. Workflow checks cover action pins, permissions, and caller sources. Run actionlint on the workflows and examples as well.
 
 ## Updating and migration
 
 Commit helper changes first, then commit the workflow referencing that full helper SHA. Validate the workflow commit and update callers through separate reviewed PRs. Keep both commits in shared main history.
 
 Before migration, complete or explicitly recover existing pending versions and drafts using their old pinned Stage/Finalize implementation. Replace package.json-triggered staging and Finalize callers together. Existing caller pins continue to use their original implementation.
-
-Remaining rollout (2026-10-13): cleanup-package-json, then typing/negotiate with JSR. Personal-repository reuse and compatibility CI follow. Keep package-specific settings in workflow comments.

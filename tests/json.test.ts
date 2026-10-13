@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import test from 'node:test';
 import { githubRelease, packageMetadata } from '../actions/npm-release/src/json.ts';
-import { optionalStageId, validateManifest } from '../actions/npm-release/src/policy.ts';
+import { validateManifest } from '../actions/npm-release/src/policy.ts';
 import { command, createRuntime } from '../actions/npm-release/src/runtime.ts';
 
 const repository = 'example/widget';
@@ -80,21 +80,6 @@ test('untrusted Release publication flags and identity are checked', () => {
     { ...value, html_url: null },
   ])
     assert.throws(() => githubRelease(malformed), /Invalid/);
-});
-
-test('stage IDs remain optional diagnostics for unfamiliar and malformed JSON', () => {
-  assert.equal(optionalStageId('{"stageId":"abc-123"}'), 'abc-123');
-  assert.equal(optionalStageId('[{"stageId":"abc-123"}]'), 'abc-123');
-  assert.equal(optionalStageId('{"package":{"stageId":"abc-123"}}'), 'abc-123');
-  for (const text of [
-    'null',
-    '[]',
-    'not JSON',
-    '{"stageId":123}',
-    '{"stageId":"bad id"}',
-    '{"stageId":{"stageId":"nested"}}',
-  ])
-    assert.equal(optionalStageId(text), '');
 });
 
 test('GitHub Release responses are validated without any mutations', async () => {

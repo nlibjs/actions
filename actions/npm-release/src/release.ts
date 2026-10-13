@@ -1,33 +1,8 @@
 import { readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { record } from './json.ts';
-import { changelogNotes, optionalStageId, validateInputs, validateManifest } from './policy.ts';
-import type {
-  Evidence,
-  RawInputs,
-  Release,
-  ReleaseInputs,
-  ReleaseOutputs,
-  Runtime,
-} from './types.ts';
-
-export async function resolveSource(raw: RawInputs, io: Runtime) {
-  const input = validateInputs(raw);
-  if (input.action === 'verify') return { 'source-sha': input.sha };
-  const release = await io.release(input.tag);
-  if (
-    release.draft ||
-    release.prerelease ||
-    release.tag_name !== input.tag ||
-    (input.releaseId !== undefined && release.id !== input.releaseId)
-  )
-    throw new Error('Stage requires the matching stable published Release');
-  const sha = await io.tagSha(input.tag);
-  if (!sha) throw new Error('Release tag is missing');
-  if (input.sha !== sha)
-    throw new Error('Selected workflow commit and Release tag differ; dispatch on the Release tag');
-  return { 'source-sha': sha, tag: input.tag };
-}
+import { changelogNotes, validateInputs, validateManifest } from './policy.ts';
+import type { Evidence, RawInputs, Release, ReleaseInputs, Runtime } from './types.ts';
 
 function checkEvidence(value: unknown, expected: Evidence): Evidence {
   const saved = record(value, 'staging evidence');
@@ -57,7 +32,7 @@ export async function runRelease(
   raw: RawInputs,
   io: Runtime,
   evidencePath: string,
-): Promise<ReleaseOutputs & { submit: string; tarball?: string }> {
+): Promise<{ submit: string; tarball?: string }> {
   const input = validateInputs(raw);
   const original = validateManifest(
     JSON.parse(await readFile(join(input.cwd, 'package.json'), 'utf8')),
@@ -79,14 +54,6 @@ export async function runRelease(
     integrity: '',
     state: 'prepared',
   };
-  const outputs: ReleaseOutputs = {
-    'package-name': original.name,
-    version: original.version,
-    tag,
-    'source-sha': input.sha,
-    'npm-state': 'unknown',
-    'release-url': release?.html_url || '',
-  };
   if (release) {
     const published = await io.published(original.name, original.version);
     io.summary(
@@ -99,16 +66,14 @@ export async function runRelease(
       if (!saved.length || published.dist?.integrity !== saved[0]?.integrity)
         throw new Error('Missing evidence or published npm integrity mismatch; nothing was resent');
       validateManifest(published, input.repository);
-      outputs['npm-state'] = 'published';
       io.summary('Published npm integrity matches the saved evidence.');
-      return { ...outputs, submit: 'false' };
+      return { submit: 'false' };
     }
     if (saved.some((e) => e.state === 'staged')) {
-      outputs['npm-state'] = 'staged';
       io.summary(
         'Staging succeeded previously. Approve this version in npmjs.com → Staged Packages.',
       );
-      return { ...outputs, submit: 'false' };
+      return { submit: 'false' };
     }
     if (saved.some((e) => e.state === 'unknown') || (await io.submissionStarted(tag)))
       throw new Error(
@@ -144,9 +109,9 @@ export async function runRelease(
   io.summary(
     `Verified ${original.name}@${original.version}; cleanup=${input.cleanup}; integrity=${prepared.integrity}.\n${prepared.files.join('\n')}`,
   );
-  if (!release) return { ...outputs, submit: 'false' };
+  if (!release) return { submit: 'false' };
   await writeFile(evidencePath, JSON.stringify({ ...expected, integrity: prepared.integrity }));
-  return { ...outputs, submit: 'true', tarball: prepared.tarball };
+  return { submit: 'true', tarball: prepared.tarball };
 }
 
 export async function submit(raw: RawInputs, io: Runtime, evidencePath: string, tarball: string) {
@@ -177,16 +142,14 @@ export async function submit(raw: RawInputs, io: Runtime, evidencePath: string, 
     throw new Error('Could not confirm prepared evidence before submission');
   if (packed.integrity !== local.integrity || (await io.published(pkg.name, pkg.version)))
     throw new Error('Tarball or registry state changed before submission');
-  const receipt = { ...local, state: 'unknown' as 'unknown' | 'staged', stageId: '' };
+  const receipt = { ...local, state: 'unknown' as 'unknown' | 'staged' };
   await writeFile(evidencePath, JSON.stringify(receipt));
   const result = await io.stage(tarball);
   if (result.code !== 0)
     throw new Error('npm submission outcome is unknown; inspect Staged Packages before recovery');
   receipt.state = 'staged';
-  receipt.stageId = optionalStageId(result.stdout);
   io.summary(
-    `npm staging succeeded. Approve ${pkg.name}@${pkg.version} in npmjs.com → Staged Packages.${receipt.stageId ? ` Stage ID: ${receipt.stageId}.` : ''}`,
+    `npm staging succeeded. Approve ${pkg.name}@${pkg.version} in npmjs.com → Staged Packages.`,
   );
   await writeFile(evidencePath, JSON.stringify(receipt));
-  return { 'npm-state': 'staged' };
 }

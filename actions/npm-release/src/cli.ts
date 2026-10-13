@@ -1,7 +1,7 @@
 import { appendFile, mkdir, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { record } from './json.ts';
-import { resolveSource, runRelease, submit } from './release.ts';
+import { runRelease, submit } from './release.ts';
 import { createRuntime } from './runtime.ts';
 import type { Runtime } from './types.ts';
 
@@ -14,7 +14,7 @@ try {
     tag: process.env.RELEASE_TAG,
     cleanup: process.env.RELEASE_CLEANUP_SOURCE,
     repository: process.env.GITHUB_REPOSITORY,
-    sha: process.env.RELEASE_SOURCE_SHA || process.env.GITHUB_SHA,
+    sha: process.env.GITHUB_SHA,
     event: process.env.GITHUB_EVENT_NAME,
     cwd: process.env.GITHUB_WORKSPACE || process.cwd(),
     releaseId: undefined as number | undefined,
@@ -36,10 +36,6 @@ try {
       throw new Error('Invalid event Release ID');
     input.releaseId = release.id;
   }
-  if (input.action === 'stage' && input.sha !== process.env.GITHUB_SHA)
-    throw new Error(
-      'Select the Release tag for workflow dispatch so provenance matches the source',
-    );
   io = await createRuntime({
     repository: input.repository || '',
     actionPath: process.env.COMMON_ACTION_PATH,
@@ -49,17 +45,15 @@ try {
   const path = join(dir, 'evidence.json');
   const phase = process.env.RELEASE_PHASE || 'prepare';
   const result =
-    phase === 'resolve'
-      ? await resolveSource(input, io)
-      : phase === 'prepare'
-        ? await runRelease(input, io, path)
-        : phase === 'submit'
-          ? await submit(input, io, path, process.env.RELEASE_TARBALL || '')
-          : (() => {
-              throw new Error('Invalid phase');
-            })();
+    phase === 'prepare'
+      ? await runRelease(input, io, path)
+      : phase === 'submit'
+        ? await submit(input, io, path, process.env.RELEASE_TARBALL || '')
+        : (() => {
+            throw new Error('Invalid phase');
+          })();
   if (process.env.GITHUB_OUTPUT)
-    for (const [key, value] of Object.entries(result)) {
+    for (const [key, value] of Object.entries(result || {})) {
       if (/[\r\n]/.test(value)) throw new Error('Unexpected multiline workflow output');
       await appendFile(process.env.GITHUB_OUTPUT, `${key}=${value}\n`);
     }

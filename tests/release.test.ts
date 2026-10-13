@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import type { TestContext } from 'node:test';
 import test from 'node:test';
 import { validateInputs } from '../actions/npm-release/src/policy.ts';
-import { resolveSource, runRelease, submit } from '../actions/npm-release/src/release.ts';
+import { runRelease, submit } from '../actions/npm-release/src/release.ts';
 import type { Evidence, RawInputs, Runtime } from '../actions/npm-release/src/types.ts';
 
 const sha = 'a'.repeat(40),
@@ -87,7 +87,6 @@ test('Verify uses no registry, Release, artifact or submission methods', async (
     stage: forbidden,
   });
   const input = { ...f.input, action: 'verify', tag: '', event: 'pull_request' };
-  assert.equal((await resolveSource(input, f.io))['source-sha'], sha);
   assert.equal((await runRelease(input, f.io, f.path)).submit, 'false');
   assert.deepEqual(f.calls, ['prepare', 'cleanup']);
 });
@@ -103,7 +102,7 @@ test('initial staging prepares evidence; submission requires the artifact round 
   );
   assert.ok(!f.calls.includes('stage'));
   f.io.evidence = async () => [expected];
-  assert.equal((await submit(f.input, f.io, f.path, ready.tarball || ''))['npm-state'], 'staged');
+  await submit(f.input, f.io, f.path, ready.tarball || '');
   assert.equal(JSON.parse(await readFile(f.path, 'utf8')).state, 'staged');
   assert.deepEqual(f.calls, ['prepare', 'cleanup', 'stage']);
 });
@@ -131,7 +130,6 @@ test('receipt retries skip builds and npm staging while approval is pending', as
     evidence: async () => [expected, { ...expected, state: 'staged' }],
   });
   const result = await runRelease(f.input, f.io, f.path);
-  assert.equal(result['npm-state'], 'staged');
   assert.equal(result.submit, 'false');
   assert.deepEqual(f.calls, []);
 });
@@ -141,7 +139,7 @@ test('public npm retries compare saved integrity and never rebuild or resend', a
     evidence: async () => [expected],
     published: async () => ({ ...pkg, dist: { integrity } }),
   });
-  assert.equal((await runRelease(f.input, f.io, f.path))['npm-state'], 'published');
+  assert.equal((await runRelease(f.input, f.io, f.path)).submit, 'false');
   assert.deepEqual(f.calls, []);
   f.io.published = async () => ({ ...pkg, dist: { integrity: 'different' } });
   await assert.rejects(runRelease(f.input, f.io, f.path), /mismatch/);
@@ -181,7 +179,6 @@ test('drafts, prereleases, moved tags, wrong version and lookup failures stop be
     { ...release, tag_name: 'v1.2.4' },
   ]) {
     f.io.release = async () => value;
-    await assert.rejects(resolveSource(f.input, f.io));
     await assert.rejects(runRelease(f.input, f.io, f.path));
   }
   f.io.release = async () => release;
@@ -248,7 +245,7 @@ test('a failed build can be retried or manually dispatched before submission', a
   const retry = { ...f.input, event: 'workflow_dispatch' };
   assert.equal((await runRelease(retry, f.io, f.path)).submit, 'true');
   f.io.evidence = async () => [expected];
-  assert.equal((await submit(retry, f.io, f.path, '/package.tgz'))['npm-state'], 'staged');
+  await submit(retry, f.io, f.path, '/package.tgz');
 });
 
 test('an uploaded preparation artifact without a started submission can be rebuilt safely', async (t) => {
@@ -262,11 +259,11 @@ test('an uploaded preparation artifact without a started submission can be rebui
 test('manual publishing resolves only the selected Release commit for accurate provenance', async (t) => {
   const f = await fixture(t);
   await assert.rejects(
-    resolveSource({ ...f.input, event: 'workflow_dispatch', sha: 'b'.repeat(40) }, f.io),
-    /dispatch on the Release tag/,
+    runRelease({ ...f.input, event: 'workflow_dispatch', sha: 'b'.repeat(40) }, f.io, f.path),
+    /source tag changed/,
   );
   assert.equal(
-    (await resolveSource({ ...f.input, event: 'workflow_dispatch' }, f.io))['source-sha'],
-    sha,
+    (await runRelease({ ...f.input, event: 'workflow_dispatch' }, f.io, f.path)).submit,
+    'true',
   );
 });

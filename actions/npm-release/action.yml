@@ -11,13 +11,10 @@ inputs:
     description: registry or local
     default: registry
   phase:
-    description: prepare, resolve or submit
+    description: prepare or submit
     default: prepare
   tarball:
     description: Inspected tarball for the submit phase
-    default: ""
-  source-sha:
-    description: Expected resolved source for parallel registry jobs
     default: ""
 outputs:
   submit:
@@ -26,44 +23,9 @@ outputs:
   tarball:
     description: Inspected tarball path
     value: ${{ steps.prepare.outputs.tarball }}
-  package-name:
-    description: Release package-name
-    value: ${{ steps.prepare.outputs.package-name }}
-  version:
-    description: Release version
-    value: ${{ steps.prepare.outputs.version }}
-  tag:
-    description: Release tag
-    value: ${{ steps.prepare.outputs.tag }}
-  source-sha:
-    description: Release source-sha
-    value: ${{ steps.source.outputs.source-sha }}
-  npm-state:
-    description: Release npm-state
-    value: ${{ steps.submit.outputs.npm-state || steps.prepare.outputs.npm-state }}
-  release-url:
-    description: Release release-url
-    value: ${{ steps.prepare.outputs.release-url }}
 runs:
   using: composite
   steps:
-    - id: source
-      if: inputs.phase != 'submit'
-      shell: bash
-      run: node "$COMMON_ACTION_PATH/src/cli.ts"
-      env:
-        COMMON_ACTION_PATH: ${{ github.action_path }}
-        RELEASE_ACTION: ${{ inputs.action }}
-        RELEASE_TAG: ${{ inputs.tag }}
-        RELEASE_CLEANUP_SOURCE: ${{ inputs.cleanup-source }}
-        RELEASE_PHASE: resolve
-    - name: Check parallel source
-      if: inputs.phase != 'submit' && inputs.source-sha != ''
-      shell: bash
-      env:
-        EXPECTED_SHA: ${{ inputs.source-sha }}
-        RESOLVED_SHA: ${{ steps.source.outputs.source-sha }}
-      run: test "$EXPECTED_SHA" = "$RESOLVED_SHA"
     - name: Install locked cleanup tooling
       if: inputs.phase == 'prepare'
       shell: bash
@@ -73,7 +35,7 @@ runs:
     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       if: inputs.phase == 'prepare'
       with:
-        ref: ${{ steps.source.outputs.source-sha }}
+        ref: ${{ github.sha }}
         fetch-depth: 0
         persist-credentials: false
     - id: prepare
@@ -86,7 +48,6 @@ runs:
         RELEASE_TAG: ${{ inputs.tag }}
         RELEASE_CLEANUP_SOURCE: ${{ inputs.cleanup-source }}
         RELEASE_PHASE: prepare
-        RELEASE_SOURCE_SHA: ${{ steps.source.outputs.source-sha }}
     - id: submit
       if: inputs.phase == 'submit'
       shell: bash
@@ -97,5 +58,4 @@ runs:
         RELEASE_TAG: ${{ inputs.tag }}
         RELEASE_CLEANUP_SOURCE: ${{ inputs.cleanup-source }}
         RELEASE_PHASE: submit
-        RELEASE_SOURCE_SHA: ${{ inputs.source-sha }}
         RELEASE_TARBALL: ${{ inputs.tarball }}

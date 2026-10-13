@@ -11,29 +11,15 @@ async function yaml(path: string) {
 }
 const workflow = await yaml('.github/workflows/npm-release.yml');
 const contract = record(record(workflow.on, 'on').workflow_call, 'contract');
-const inputs = record(contract.inputs, 'inputs'),
-  outputs = record(contract.outputs, 'outputs');
-assert.deepEqual(Object.keys(inputs).sort(), [
-  'action',
-  'cleanup-source',
-  'environment',
-  'source-sha',
-  'tag',
-]);
+const inputs = record(contract.inputs, 'inputs');
+assert.deepEqual(Object.keys(inputs).sort(), ['action', 'cleanup-source', 'environment', 'tag']);
 assert.equal(record(inputs.action, 'action').default, 'verify');
-assert.deepEqual(Object.keys(outputs).sort(), [
-  'npm-state',
-  'package-name',
-  'release-url',
-  'source-sha',
-  'tag',
-  'version',
-]);
+assert.equal(contract.outputs, undefined);
 assert.equal(workflow.permissions, undefined);
 for (const [name, value] of Object.entries(record(workflow.jobs, 'jobs'))) {
   const job = record(value, name);
   assert.deepEqual(job.permissions, name === 'Verify' ? { contents: 'read' } : undefined);
-  assert.equal(Boolean(job.environment), name === 'ProtectedStage');
+  assert.equal(Boolean(job.environment), name === 'Stage');
   assert.ok(Array.isArray(job.steps));
   if (name !== 'Verify') {
     // biome-ignore lint/suspicious/noTemplateCurlyInString: GitHub expression.
@@ -54,16 +40,15 @@ for (const [name, value] of Object.entries(record(workflow.jobs, 'jobs'))) {
   }
 }
 const action = await yaml('actions/npm-release/action.yml');
-assert.deepEqual(
-  Object.keys(record(action.outputs, 'outputs')).sort(),
-  [...Object.keys(outputs), 'submit', 'tarball'].sort(),
-);
+assert.deepEqual(Object.keys(record(action.outputs, 'outputs')).sort(), ['submit', 'tarball']);
 const actionSteps = record(action.runs, 'runs').steps;
 assert.ok(Array.isArray(actionSteps));
 for (const value of actionSteps) {
   const step = record(value, 'step');
   if (step.uses) assert.match(String(step.uses), /@[a-f0-9]{40}$/);
   if (String(step.uses).startsWith('actions/checkout')) {
+    // biome-ignore lint/suspicious/noTemplateCurlyInString: GitHub expression.
+    assert.equal(record(step.with, 'checkout').ref, '${{ github.sha }}');
     assert.equal(record(step.with, 'checkout')['fetch-depth'], 0);
     assert.equal(record(step.with, 'checkout')['persist-credentials'], false);
   }
@@ -96,11 +81,10 @@ for (const file of [
   }
   if (jobs.PublishJsr) {
     const jsr = record(jobs.PublishJsr, 'JSR');
-    assert.equal(jsr.needs, 'Source');
-    assert.equal(record(jobs.Stage, 'Stage').needs, 'Source');
+    assert.equal(jsr.needs, undefined);
+    assert.equal(record(jobs.Stage, 'Stage').needs, undefined);
     // biome-ignore lint/suspicious/noTemplateCurlyInString: GitHub expression.
-    const source = '${{ needs.Source.outputs.sha }}';
-    assert.equal(record(record(jobs.Stage, 'Stage').with, 'with')['source-sha'], source);
+    const source = '${{ github.sha }}';
     assert.ok(Array.isArray(jsr.steps));
     const checkout = jsr.steps
       .map((s) => record(s, 'step'))

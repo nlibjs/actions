@@ -17,14 +17,6 @@ export interface ReleaseInputs extends RawInputs {
   repository: string;
   sha: string;
 }
-export interface ReleaseOutputs {
-  'package-name': string;
-  version: string;
-  tag: string;
-  'source-sha': string;
-  'npm-state': 'unknown' | 'staged' | 'published';
-  'release-url': string;
-}
 export interface PackageMetadata {
   [field: string]: unknown;
   name: string;
@@ -69,7 +61,6 @@ export interface Evidence {
   version: string;
   integrity: string;
   state: 'prepared' | 'unknown' | 'staged';
-  stageId?: string;
 }
 export interface Runtime {
   release(tag: string): Promise<Release>;

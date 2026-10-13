@@ -1,4 +1,4 @@
-import { isRecord, packageMetadata } from './json.ts';
+import { packageMetadata } from './json.ts';
 import type { PackageMetadata, RawInputs, ReleaseInputs } from './types.ts';
 
 export const VERSION = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?![\s\S])/;
@@ -63,17 +63,4 @@ export function changelogNotes(text: string, tag: string): string {
     .trim();
   if (!notes) throw new Error(`CHANGELOG.md has an empty ${tag} section`);
   return notes;
-}
-
-export function optionalStageId(stdout: string): string {
-  try {
-    const data: unknown = JSON.parse(stdout);
-    if (!isRecord(data) && !Array.isArray(data)) return '';
-    const nested = Object.values(data).find((v) => isRecord(v) && v.stageId);
-    const direct = isRecord(data) ? data.stageId : undefined;
-    const candidate = direct ?? (isRecord(nested) ? nested.stageId : undefined);
-    return typeof candidate === 'string' && /^[\w-]{1,200}$/.test(candidate) ? candidate : '';
-  } catch {
-    return '';
-  }
 }
