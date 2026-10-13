@@ -14,22 +14,6 @@ on:
       cleanup-source:
         type: string
         default: "registry"
-      source-sha:
-        type: string
-        default: ""
-    outputs:
-      package-name:
-        value: ${{ jobs.Verify.outputs.package-name || jobs.Stage.outputs.package-name || jobs.ProtectedStage.outputs.package-name }}
-      version:
-        value: ${{ jobs.Verify.outputs.version || jobs.Stage.outputs.version || jobs.ProtectedStage.outputs.version }}
-      tag:
-        value: ${{ jobs.Verify.outputs.tag || jobs.Stage.outputs.tag || jobs.ProtectedStage.outputs.tag }}
-      source-sha:
-        value: ${{ jobs.Verify.outputs.source-sha || jobs.Stage.outputs.source-sha || jobs.ProtectedStage.outputs.source-sha }}
-      npm-state:
-        value: ${{ jobs.Verify.outputs.npm-state || jobs.Stage.outputs.npm-state || jobs.ProtectedStage.outputs.npm-state }}
-      release-url:
-        value: ${{ jobs.Verify.outputs.release-url || jobs.Stage.outputs.release-url || jobs.ProtectedStage.outputs.release-url }}
 # Publishing jobs inherit caller permissions, including on skipped branches.
 jobs:
   Verify:
@@ -38,13 +22,6 @@ jobs:
     timeout-minutes: 30
     permissions:
       contents: read
-    outputs:
-      package-name: ${{ steps.release.outputs.package-name }}
-      version: ${{ steps.release.outputs.version }}
-      tag: ${{ steps.release.outputs.tag }}
-      source-sha: ${{ steps.release.outputs.source-sha }}
-      npm-state: ${{ steps.release.outputs.npm-state }}
-      release-url: ${{ steps.release.outputs.release-url }}
     steps:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
@@ -53,84 +30,19 @@ jobs:
           registry-url: https://registry.npmjs.org
       - run: npm install --global npm@11.21.0
       - id: release
-        uses: nlibjs/actions/actions/npm-release@4e12232e9335a9e28acd488867d3a9411f0a5904
+        uses: nlibjs/actions/actions/npm-release@08012cd4b44a27b1cd246748cfd489ad808d32d8
         with:
           action: ${{ inputs.action }}
           tag: ${{ inputs.tag }}
           cleanup-source: ${{ inputs.cleanup-source }}
-          source-sha: ${{ inputs.source-sha }}
         env:
           GH_TOKEN: ${{ github.token }}
   Stage:
     name: Stage ${{ inputs.tag }}
-    if: inputs.action == 'stage' && inputs.environment == ''
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    outputs:
-      package-name: ${{ steps.release.outputs.package-name }}
-      version: ${{ steps.release.outputs.version }}
-      tag: ${{ steps.release.outputs.tag }}
-      source-sha: ${{ steps.release.outputs.source-sha }}
-      npm-state: ${{ steps.submit.outputs.npm-state || steps.release.outputs.npm-state }}
-      release-url: ${{ steps.release.outputs.release-url }}
-    steps:
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
-        with:
-          node-version: 26.x
-          package-manager-cache: false
-          registry-url: https://registry.npmjs.org
-      - run: npm install --global npm@11.21.0
-      - id: release
-        uses: nlibjs/actions/actions/npm-release@4e12232e9335a9e28acd488867d3a9411f0a5904
-        with:
-          action: ${{ inputs.action }}
-          tag: ${{ inputs.tag }}
-          cleanup-source: ${{ inputs.cleanup-source }}
-          source-sha: ${{ inputs.source-sha }}
-        env:
-          GH_TOKEN: ${{ github.token }}
-      - name: Persist npm submission evidence
-        if: steps.release.outputs.submit == 'true'
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
-        with:
-          name: npm-${{ inputs.tag }}-${{ github.run_id }}-${{ github.run_attempt }}-prepared
-          path: ${{ runner.temp }}/npm-evidence/evidence.json
-          if-no-files-found: error
-          retention-days: 0
-      - name: Submit npm tarball
-        id: submit
-        if: steps.release.outputs.submit == 'true'
-        uses: nlibjs/actions/actions/npm-release@4e12232e9335a9e28acd488867d3a9411f0a5904
-        with:
-          action: stage
-          phase: submit
-          tag: ${{ inputs.tag }}
-          source-sha: ${{ steps.release.outputs.source-sha }}
-          tarball: ${{ steps.release.outputs.tarball }}
-        env:
-          GH_TOKEN: ${{ github.token }}
-      - name: Persist npm staging result
-        if: always() && steps.submit.outcome != 'skipped'
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
-        with:
-          name: npm-${{ inputs.tag }}-${{ github.run_id }}-${{ github.run_attempt }}-result
-          path: ${{ runner.temp }}/npm-evidence/evidence.json
-          if-no-files-found: error
-          retention-days: 0
-
-  ProtectedStage:
-    name: Stage ${{ inputs.tag }}
-    if: inputs.action == 'stage' && inputs.environment != ''
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
+    if: inputs.action == 'stage'
     environment: ${{ inputs.environment }}
-    outputs:
-      package-name: ${{ steps.release.outputs.package-name }}
-      version: ${{ steps.release.outputs.version }}
-      tag: ${{ steps.release.outputs.tag }}
-      source-sha: ${{ steps.release.outputs.source-sha }}
-      npm-state: ${{ steps.submit.outputs.npm-state || steps.release.outputs.npm-state }}
-      release-url: ${{ steps.release.outputs.release-url }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
@@ -139,12 +51,11 @@ jobs:
           registry-url: https://registry.npmjs.org
       - run: npm install --global npm@11.21.0
       - id: release
-        uses: nlibjs/actions/actions/npm-release@4e12232e9335a9e28acd488867d3a9411f0a5904
+        uses: nlibjs/actions/actions/npm-release@08012cd4b44a27b1cd246748cfd489ad808d32d8
         with:
           action: ${{ inputs.action }}
           tag: ${{ inputs.tag }}
           cleanup-source: ${{ inputs.cleanup-source }}
-          source-sha: ${{ inputs.source-sha }}
         env:
           GH_TOKEN: ${{ github.token }}
       - name: Persist npm submission evidence
@@ -158,12 +69,11 @@ jobs:
       - name: Submit npm tarball
         id: submit
         if: steps.release.outputs.submit == 'true'
-        uses: nlibjs/actions/actions/npm-release@4e12232e9335a9e28acd488867d3a9411f0a5904
+        uses: nlibjs/actions/actions/npm-release@08012cd4b44a27b1cd246748cfd489ad808d32d8
         with:
           action: stage
           phase: submit
           tag: ${{ inputs.tag }}
-          source-sha: ${{ steps.release.outputs.source-sha }}
           tarball: ${{ steps.release.outputs.tarball }}
         env:
           GH_TOKEN: ${{ github.token }}
