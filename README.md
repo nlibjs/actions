@@ -47,7 +47,7 @@ Release tooling does not change consumer Node support or compatibility CI. Priva
 3. The workflow checks the published Release and tag, runs lint/tests/build, cleans the npm manifest, and inspects one tarball. Before submission it saves the expected integrity as a workflow artifact, then stages those exact bytes with provenance and saves the result.
 4. Approve the exact package/version in npmjs.com → Staged Packages using maintainer 2FA.
 
-JSR runs after Stage succeeds (`needs: Stage`), without waiting for npm approval. GitHub Release and JSR can be available before npm; no Finalize operation follows approval.
+JSR runs after Stage succeeds (`needs: Stage`), without waiting for npm approval. GitHub Release and JSR can be available before npm.
 
 A GITHUB_TOKEN-created Release normally does not trigger another workflow. Publish through the GitHub UI or a triggering actor/token; automation using GITHUB_TOKEN must explicitly invoke deployment. The source commit must contain the Release-triggered caller before its Release is published.
 
@@ -90,8 +90,6 @@ npm run check
 
 Use Node 26.x and npm 11.21.0. Tests use fixtures and a local dry-run registry; they do not publish packages. Workflow checks cover action pins, permissions, and caller sources. Run actionlint on the workflows and examples as well.
 
-## Updating and migration
+## Updating
 
 Commit helper changes first, then commit the workflow referencing that full helper SHA. Validate the workflow commit and update callers through separate reviewed PRs. Keep both commits in shared main history.
-
-Before migration, complete or explicitly recover existing pending versions and drafts using their old pinned Stage/Finalize implementation. Replace package.json-triggered staging and Finalize callers together. Existing caller pins continue to use their original implementation.
