@@ -90,8 +90,6 @@ npm run check
 
 Use Node 26.x and npm 11.21.0. Tests use fixtures and a local dry-run registry; they do not publish packages. Workflow checks cover action pins, permissions, and caller sources. Run actionlint on the workflows and examples as well.
 
-## Updating and migration
+## Updating
 
 Commit helper changes first, then commit the workflow referencing that full helper SHA. Validate the workflow commit and update callers through separate reviewed PRs. Keep both commits in shared main history.
-
-Before migration, complete or explicitly recover existing pending versions and drafts using their old pinned Stage/Finalize implementation. Replace package.json-triggered staging and Finalize callers together. Existing caller pins continue to use their original implementation.
